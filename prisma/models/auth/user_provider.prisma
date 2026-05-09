@@ -1,0 +1,16 @@
+enum OAuthType {
+    GOOGLE
+}
+
+model UserProvider {
+    id String @id @default(uuid())
+    type OAuthType
+    providerUid String
+    createdAt DateTime @default(now())
+    // User Relation
+    userId String 
+    user User @relation(fields: [userId], references: [id])
+
+    @@unique([type, providerUid]) // same Google account can't link to two users
+    @@unique([userId, type]) // one user can't link the same provider twice
+}
