@@ -29,7 +29,37 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'warn',
-      "prettier/prettier": ["error", { endOfLine: "auto" }],
+      'prettier/prettier': ['error', { endOfLine: 'auto' }],
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['src/**'],
+              message: "Use the '@/' alias instead of 'src/' prefix (e.g. '@/config/env').",
+            },
+            {
+              regex: '^(\\.\\./){3,}',
+              message: "Avoid deep relative imports (3+ levels up). Use the '@/' alias instead.",
+            },
+          ],
+        },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'MemberExpression[object.name="process"][property.name="env"]',
+          message:
+            'Do not access process.env directly. Import from src/config/env.ts instead.',
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/config/env.ts', 'test/jest-setup.ts'],
+    rules: {
+      'no-restricted-syntax': 'off',
     },
   },
 );

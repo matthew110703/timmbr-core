@@ -1,0 +1,18 @@
+STASHED=false
+
+# Hide unstaged changes so checks only see committed code
+if ! git diff --quiet; then
+  git stash --keep-index --quiet
+  STASHED=true
+fi
+
+# Always restore on exit — fires even when a check fails
+cleanup() {
+  if [ "$STASHED" = "true" ]; then
+    git stash pop --quiet
+  fi
+}
+trap cleanup EXIT
+
+pnpm run check:types
+pnpm run test

@@ -12,8 +12,6 @@ export class HealthController {
   @Get()
   @HealthCheck()
   check() {
-    return this.health.check([
-      () => this.prismaIndicator.isHealthy('database'),
-    ]);
+    return this.health.check([() => this.prismaIndicator.isHealthy('database')]);
   }
 }

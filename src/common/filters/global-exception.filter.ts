@@ -1,12 +1,16 @@
-import {
-  ArgumentsHost,
-  Catch,
-  ExceptionFilter,
-  HttpException,
-  HttpStatus,
-} from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { PinoLogger } from 'nestjs-pino';
+
+interface FastifyErrorLike {
+  statusCode: number;
+  code: string;
+  message: string;
+}
+
+interface PrismaErrorLike {
+  code: string;
+}
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -45,7 +49,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   private resolveException(exception: unknown): {
     status: number;
     message: string;
-    errors: Record<string, any>[] | null;
+    errors: Record<string, unknown>[] | null;
   } {
     // NestJS HttpException (includes BadRequestException, NotFoundException, etc.)
     if (exception instanceof HttpException) {
@@ -54,11 +58,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
       // ValidationPipe throws structured object
       if (typeof response === 'object' && response !== null) {
-        const res = response as Record<string, any>;
+        const res = response as Record<string, unknown>;
         return {
           status,
-          message: res.message ?? 'Request failed',
-          errors: Array.isArray(res.errors) ? res.errors : null,
+          message: typeof res.message === 'string' ? res.message : 'Request failed',
+          errors: Array.isArray(res.errors) ? (res.errors as Record<string, unknown>[]) : null,
         };
       }
 
@@ -68,8 +72,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     // Fastify native errors (e.g. payload too large, bad JSON)
     if (this.isFastifyError(exception)) {
       return {
-        status: (exception as any).statusCode ?? HttpStatus.BAD_REQUEST,
-        message: (exception as any).message ?? 'Bad request',
+        status: exception.statusCode,
+        message: exception.message,
         errors: null,
       };
     }
@@ -87,7 +91,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     };
   }
 
-  private isFastifyError(exception: unknown): boolean {
+  private isFastifyError(exception: unknown): exception is FastifyErrorLike {
     return (
       typeof exception === 'object' &&
       exception !== null &&
@@ -96,41 +100,36 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     );
   }
 
-  private isPrismaError(exception: unknown): boolean {
-    return (
-      typeof exception === 'object' &&
-      exception !== null &&
-      'code' in exception &&
-      typeof (exception as any).code === 'string' &&
-      (exception as any).code.startsWith('P')
-    );
+  private isPrismaError(exception: unknown): exception is PrismaErrorLike {
+    if (typeof exception !== 'object' || exception === null || !('code' in exception)) {
+      return false;
+    }
+    const code = (exception as Record<string, unknown>).code;
+    return typeof code === 'string' && code.startsWith('P');
   }
 
-  private handlePrismaError(exception: unknown): {
+  private handlePrismaError(exception: PrismaErrorLike): {
     status: number;
     message: string;
     errors: null;
   } {
-    const code = (exception as any).code as string;
+    const prismaErrorMap: Record<string, { status: number; message: string }> = {
+      P2002: {
+        status: HttpStatus.CONFLICT,
+        message: 'A record with this value already exists',
+      },
+      P2025: { status: HttpStatus.NOT_FOUND, message: 'Record not found' },
+      P2003: {
+        status: HttpStatus.BAD_REQUEST,
+        message: 'Foreign key constraint failed',
+      },
+      P2014: {
+        status: HttpStatus.BAD_REQUEST,
+        message: 'Relation violation',
+      },
+    };
 
-    const prismaErrorMap: Record<string, { status: number; message: string }> =
-      {
-        P2002: {
-          status: HttpStatus.CONFLICT,
-          message: 'A record with this value already exists',
-        },
-        P2025: { status: HttpStatus.NOT_FOUND, message: 'Record not found' },
-        P2003: {
-          status: HttpStatus.BAD_REQUEST,
-          message: 'Foreign key constraint failed',
-        },
-        P2014: {
-          status: HttpStatus.BAD_REQUEST,
-          message: 'Relation violation',
-        },
-      };
-
-    const resolved = prismaErrorMap[code] ?? {
+    const resolved = prismaErrorMap[exception.code] ?? {
       status: HttpStatus.INTERNAL_SERVER_ERROR,
       message: 'Database error',
     };
