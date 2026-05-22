@@ -12,10 +12,10 @@ export const pinoConfig: Params = {
           target: 'pino-pretty',
           options: {
             colorize: true,
-            singleLine: true,
             translateTime: 'SYS:yyyy-mm-dd HH:MM:ss',
             ignore: 'pid,hostname',
             messageFormat: '[{context}] {msg}',
+            errorLikeObjectKeys: ['err'],
           },
         }
       : undefined,

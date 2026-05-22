@@ -5,6 +5,9 @@ export const envSchema = z.object({
   NODE_ENV: z.enum(['dev', 'prod', 'test']).default('dev'),
   DATABASE_URL: z.string(),
   ALLOWED_ORIGIN: z.string().optional(),
+  JWT_ACCESS_SECRET: z.string(),
+  JWT_REFRESH_SECRET: z.string(),
+  COOKIE_SECRET: z.string(),
 });
 
 export type Env = z.infer<typeof envSchema>;

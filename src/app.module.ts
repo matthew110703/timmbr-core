@@ -10,6 +10,8 @@ import { PrismaModule } from './prisma/prisma.module';
 import { LoggerModule } from './common/logger/logger.module';
 import { GlobalExceptionFilter } from './common/filters';
 import { HealthModule } from './health/health.module';
+import { AuthModule } from './auth/auth.module';
+import { AccessTokenGuard } from './auth/guards/access-token.guard';
 
 @Module({
   imports: [
@@ -18,12 +20,14 @@ import { HealthModule } from './health/health.module';
     LoggerModule,
     HealthModule,
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: AccessTokenGuard },
   ],
 })
 export class AppModule {}
