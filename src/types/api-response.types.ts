@@ -1,3 +1,8 @@
+export interface MessageResult<T> {
+  message: string;
+  data: T;
+}
+
 export interface PaginationMeta {
   page: number;
   limit: number;

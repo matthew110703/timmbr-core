@@ -8,6 +8,7 @@ import { RESPONSE_MESSAGE_KEY } from '@/decorators/response-message.decorator';
 import { SKIP_TRANSFORM_KEY } from '@/decorators/skip-transform.decorator';
 import {
   ApiSuccessResponse,
+  MessageResult,
   PaginatedApiResponse,
   PaginatedResult,
 } from '@/types/api-response.types';
@@ -21,7 +22,7 @@ export class TransformInterceptor<T> implements NestInterceptor<
 
   intercept(
     context: ExecutionContext,
-    next: CallHandler<T | PaginatedResult<T>>,
+    next: CallHandler<T | PaginatedResult<T> | MessageResult<T>>,
   ): Observable<ApiSuccessResponse<T> | PaginatedApiResponse<T>> {
     const skip = this.reflector.getAllAndOverride<boolean>(SKIP_TRANSFORM_KEY, [
       context.getHandler(),
@@ -38,13 +39,21 @@ export class TransformInterceptor<T> implements NestInterceptor<
       ]) ?? 'Success';
 
     return next.handle().pipe(
-      map((data) => {
+      map((raw) => {
         const statusCode = res.statusCode;
+        let resolvedMessage = message;
+        let data: T | PaginatedResult<T>;
+        if (isMessageResult<T>(raw)) {
+          resolvedMessage = raw.message;
+          data = raw.data;
+        } else {
+          data = raw;
+        }
         const base = {
           success: true as const,
           statusCode,
           code: resolveCode(statusCode),
-          message,
+          message: resolvedMessage,
           path: req.url,
           method: req.method,
           timestamp: new Date().toISOString(),
@@ -66,6 +75,16 @@ function resolveCode(statusCode: number): string {
     .replace(/[^A-Z0-9 ]/g, '')
     .trim()
     .replace(/ +/g, '_');
+}
+
+function isMessageResult<T>(value: unknown): value is MessageResult<T> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'message' in value &&
+    typeof (value as Record<string, unknown>).message === 'string' &&
+    'data' in value
+  );
 }
 
 function isPaginatedResult<T>(value: unknown): value is PaginatedResult<T> {

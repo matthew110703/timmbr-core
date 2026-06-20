@@ -21,6 +21,16 @@ async function bootstrap() {
 
   // Pino Logger
   app.useLogger(app.get(Logger));
+  global.logger = app.get(Logger);
+
+  // Capture response body for structured logging (attached to req.raw.__resBody)
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .addHook('onSend', (request, _reply, payload: string, done) => {
+      (request.raw as { __resBody?: string }).__resBody = payload;
+      done(null, payload);
+    });
 
   // Security headers — type cast needed due to pnpm resolving @fastify/helmet against fastify@5.8.4 while we run 5.8.5
   await app.register(helmet as any, { contentSecurityPolicy: false });
