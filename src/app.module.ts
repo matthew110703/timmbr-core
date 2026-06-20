@@ -12,6 +12,7 @@ import { GlobalExceptionFilter } from './common/filters';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { AccessTokenGuard } from './auth/guards/access-token.guard';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { AccessTokenGuard } from './auth/guards/access-token.guard';
     LoggerModule,
     HealthModule,
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    RedisModule,
     AuthModule,
   ],
   controllers: [AppController],

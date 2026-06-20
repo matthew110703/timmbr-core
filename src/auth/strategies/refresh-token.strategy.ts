@@ -12,7 +12,7 @@ export class RefreshTokenStrategy extends PassportStrategy(Strategy, 'jwt-refres
       jwtFromRequest: ExtractJwt.fromExtractors([
         (req: FastifyRequest) => req.cookies['refreshToken'] ?? null,
       ]),
-      secretOrKey: env.JWT_ACCESS_SECRET,
+      secretOrKey: env.JWT_REFRESH_SECRET,
       passReqToCallback: true,
     });
   }

@@ -48,6 +48,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "fastify": "^5.8.5",
+    "ioredis": "^5.11.1",
     "nestjs-pino": "^4.6.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
@@ -112,7 +113,10 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "coverageReporters": ["text", "text-summary"],
+    "coverageReporters": [
+      "text",
+      "text-summary"
+    ],
     "testEnvironment": "node"
   },
   "lint-staged": {

@@ -22,12 +22,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const reply = ctx.getResponse<FastifyReply>();
     const request = ctx.getRequest<FastifyRequest>();
 
-    const { status, message, errors } = this.resolveException(exception);
+    const { status, message, errors, code } = this.resolveException(exception);
 
     const responseBody = {
       success: false,
       statusCode: status,
-      code: resolveCode(status),
+      code: code ?? resolveCode(status),
       message,
       errors: errors ?? null,
       path: request.url,
@@ -49,6 +49,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     status: number;
     message: string;
     errors: Record<string, unknown>[] | null;
+    code?: string;
   } {
     // NestJS HttpException (includes BadRequestException, NotFoundException, etc.)
     if (exception instanceof HttpException) {
@@ -59,6 +60,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       if (typeof response === 'object' && response !== null) {
         const res = response as Record<string, unknown>;
         const isValidation = Array.isArray(res.message);
+        const customCode = typeof res.code === 'string' ? res.code : undefined;
         return {
           status,
           message: isValidation
@@ -71,6 +73,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             : Array.isArray(res.errors)
               ? (res.errors as Record<string, unknown>[])
               : null,
+          code: customCode,
         };
       }
 

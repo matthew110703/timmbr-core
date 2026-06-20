@@ -6,7 +6,7 @@ export function getCookieOptions(): CookieSerializeOptions {
     httpOnly: true,
     secure: env.NODE_ENV === 'prod',
     sameSite: 'lax',
-    path: 'auth/refresh',
+    path: '/',
     maxAge: 60 * 60 * 24 * 7, // 7 days
   };
 }
