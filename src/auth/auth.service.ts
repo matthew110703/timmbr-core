@@ -1,6 +1,7 @@
 import { env } from '@/config/env';
 import { PrismaService } from '@/prisma/prisma.service';
 import { RedisService } from '@/redis/redis.service';
+import { MailerService } from '@/mailer/mailer.service';
 import { User } from '@/types/user';
 import {
   ConflictException,
@@ -22,6 +23,7 @@ export class AuthService {
     private jwt: JwtService,
     private prisma: PrismaService,
     private redis: RedisService,
+    private mailer: MailerService,
   ) {}
 
   async generateJwtTokens(user: User) {
@@ -73,6 +75,11 @@ export class AuthService {
 
     const tokens = await this.generateJwtTokens(user);
     await this.storeRefreshToken(user.id, tokens.refreshToken);
+
+    const verificationToken = await this.generateEmailVerificationToken(user.id);
+    const verificationUrl = `${env.APP_BASE_URL}/api/v1/auth/verify-email?token=${verificationToken}`;
+    await this.mailer.sendVerificationEmail(user.email, user.name, verificationUrl);
+
     return AuthMapper.toSignUpResponse(user, tokens);
   }
 
@@ -120,6 +127,23 @@ export class AuthService {
       where: { id: userId },
       data: { lastLoginAt: new Date() },
     });
+  }
+
+  async verifyEmail(token: string): Promise<void> {
+    const userId = await this.redis.getAndDelete(`email:verify:${token}`);
+    if (!userId) {
+      throw new UnauthorizedException('Invalid or expired verification token.');
+    }
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { emailVerified: true },
+    });
+  }
+
+  private async generateEmailVerificationToken(userId: string): Promise<string> {
+    const token = crypto.randomBytes(32).toString('hex');
+    await this.redis.setWithTTL(`email:verify:${token}`, 86400, userId);
+    return token;
   }
 
   private async storeRefreshToken(userId: string, rawToken: string) {

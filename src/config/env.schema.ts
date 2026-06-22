@@ -18,6 +18,9 @@ export const envSchema = z.object({
   COOKIE_SECRET: z.string(),
   REDIS_URL: z.string(),
   REFRESH_TOKEN_TTL: z.coerce.number().default(7 * 24 * 60 * 60),
+  RESEND_API_KEY: z.string(),
+  MAIL_FROM: z.string(),
+  APP_BASE_URL: z.string(),
 });
 
 export type Env = z.infer<typeof envSchema>;

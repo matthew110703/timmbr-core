@@ -2,8 +2,10 @@ import { Public, ResponseMessage } from '@/decorators';
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -59,5 +61,13 @@ export class AuthController {
     const token = req.cookies?.['refreshToken'];
     if (token) await this.auth.revokeRefreshToken(token);
     reply.clearCookie('refreshToken', { path: getCookieOptions().path });
+  }
+
+  @Get('verify-email')
+  @Public()
+  @HttpCode(200)
+  @ResponseMessage('Email verified successfully.')
+  async verifyEmail(@Query('token') token: string) {
+    await this.auth.verifyEmail(token);
   }
 }

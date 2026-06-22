@@ -3,6 +3,7 @@ import { AuthService } from './auth.service';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '@/prisma/prisma.service';
 import { RedisService } from '@/redis/redis.service';
+import { MailerService } from '@/mailer/mailer.service';
 
 const mockJwtService: Partial<JwtService> = {
   signAsync: jest.fn(),
@@ -22,6 +23,10 @@ const mockRedisService: Partial<RedisService> = {
   delete: jest.fn(),
 };
 
+const mockMailerService: Partial<MailerService> = {
+  sendVerificationEmail: jest.fn(),
+};
+
 describe('AuthService', () => {
   let service: AuthService;
 
@@ -32,6 +37,7 @@ describe('AuthService', () => {
         { provide: JwtService, useValue: mockJwtService },
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: RedisService, useValue: mockRedisService },
+        { provide: MailerService, useValue: mockMailerService },
       ],
     }).compile();
 

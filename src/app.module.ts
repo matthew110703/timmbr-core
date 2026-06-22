@@ -13,6 +13,7 @@ import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { AccessTokenGuard } from './auth/guards/access-token.guard';
 import { RedisModule } from './redis/redis.module';
+import { MailerModule } from './mailer/mailer.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { RedisModule } from './redis/redis.module';
     HealthModule,
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     RedisModule,
+    MailerModule,
     AuthModule,
   ],
   controllers: [AppController],
