@@ -1,1 +1,12 @@
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/testdb';
+process.env.JWT_ACCESS_SECRET = 'test-access-secret';
+process.env.JWT_REFRESH_SECRET = 'test-refresh-secret';
+process.env.COOKIE_SECRET = 'test-cookie-secret';
+process.env.REDIS_URL = 'redis://localhost:6379';
+process.env.RESEND_API_KEY = 'test-resend-api-key';
+process.env.MAIL_FROM = 'test@example.com';
+process.env.APP_BASE_URL = 'http://localhost:3000';
+process.env.CLIENT_BASE_URL = 'http://localhost:3001';
+process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
+process.env.GOOGLE_CLIENT_SECRET = 'test-google-client-secret';
+process.env.GOOGLE_CALLBACK_URL = 'http://localhost:3000/api/v1/auth/google/callback';
