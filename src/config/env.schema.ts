@@ -21,6 +21,10 @@ export const envSchema = z.object({
   RESEND_API_KEY: z.string(),
   MAIL_FROM: z.string(),
   APP_BASE_URL: z.string(),
+  CLIENT_BASE_URL: z.string(),
+  GOOGLE_CLIENT_ID: z.string(),
+  GOOGLE_CLIENT_SECRET: z.string(),
+  GOOGLE_CALLBACK_URL: z.string(),
 });
 
 export type Env = z.infer<typeof envSchema>;

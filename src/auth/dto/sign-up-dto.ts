@@ -1,6 +1,5 @@
 import {
   IsEmail,
-  IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -13,7 +12,7 @@ import {
   IsDate,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { OAuthType, UserRole } from '@prisma/client';
+import { OAuthType } from '@prisma/client';
 
 export const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{8,}$/;
 
@@ -34,10 +33,6 @@ export class SignUpPayloadDto {
       'Password must be at least 8 characters long and contain at least one uppercase letter, one number, and one special character',
   })
   password!: string;
-
-  @IsEnum(UserRole, { message: 'Role must be a valid user role' })
-  @IsOptional()
-  role?: UserRole;
 }
 
 export class UserShortDto {

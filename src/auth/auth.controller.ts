@@ -26,6 +26,9 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { getCookieOptions } from '@/config/cookie.config';
 import { RefreshTokenGuard } from './guards/refresh-token.guard';
 import { JwtPayload } from './types/jwt.types';
+import { env } from '@/config/env';
+import { OAuthLoginResult } from './auth.service';
+import passport from 'passport';
 
 @Controller('auth')
 export class AuthController {
@@ -115,5 +118,44 @@ export class AuthController {
   async changePassword(@Req() req: FastifyRequest, @Body() dto: ChangePasswordDto) {
     const user = req.user as unknown as JwtPayload;
     await this.auth.changePassword(user.sub, dto.oldPassword, dto.newPassword);
+  }
+
+  @Get('google')
+  @Public()
+  googleAuth(@Req() req: FastifyRequest, @Res() reply: FastifyReply) {
+    // hijack() tells Fastify to not touch the reply after the handler returns.
+    // Without this, Fastify sees reply.sent===false after passport calls reply.raw.end()
+    // and tries to finalize the response a second time, causing a 500.
+    reply.hijack();
+    const handler = passport.authenticate('google', {
+      scope: ['email', 'profile'],
+      session: false,
+    }) as (req: unknown, res: unknown, next: () => void) => void;
+    handler(req.raw, reply.raw, () => {});
+  }
+
+  @Get('google/callback')
+  @Public()
+  async googleCallback(@Req() req: FastifyRequest, @Res() reply: FastifyReply) {
+    const result = await new Promise<OAuthLoginResult>((resolve, reject) => {
+      (
+        passport.authenticate(
+          'google',
+          { session: false },
+          (err: unknown, user: OAuthLoginResult) => {
+            if (err || !user)
+              return reject(err instanceof Error ? err : new Error('OAuth authentication failed'));
+            resolve(user);
+          },
+        ) as (req: unknown, res: unknown, next: (err?: unknown) => void) => void
+      )(req.raw, reply.raw, (err: unknown) => {
+        if (err) reject(err instanceof Error ? err : new Error('OAuth callback error'));
+      });
+    });
+
+    reply.setCookie('refreshToken', result.tokens.refreshToken, getCookieOptions());
+    await reply.redirect(
+      `${env.CLIENT_BASE_URL}/oauth/callback?token=${result.tokens.accessToken}`,
+    );
   }
 }

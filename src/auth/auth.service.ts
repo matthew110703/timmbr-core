@@ -2,8 +2,9 @@ import { env } from '@/config/env';
 import { PrismaService } from '@/prisma/prisma.service';
 import { RedisService } from '@/redis/redis.service';
 import { MailerService } from '@/mailer/mailer.service';
-import { User } from '@/types/user';
+import { User, UserProvider } from '@/types/user';
 import {
+  BadRequestException,
   ConflictException,
   HttpException,
   HttpStatus,
@@ -11,6 +12,12 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { OAuthType } from '@prisma/client';
+
+export interface OAuthLoginResult {
+  user: User & { providers: UserProvider[] };
+  tokens: { accessToken: string; refreshToken: string };
+}
 import { JwtService } from '@nestjs/jwt';
 import { SignUpPayloadDto } from './dto/sign-up-dto';
 import * as argon2 from 'argon2';
@@ -59,10 +66,25 @@ export class AuthService {
   }
 
   async signup(payload: SignUpPayloadDto) {
-    const existingUser = await this.findUserByEmail(payload.email);
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: payload.email },
+      include: { providers: true },
+    });
 
     if (existingUser) {
-      throw new ConflictException('Email already exists.');
+      if (existingUser.password !== null) {
+        throw new ConflictException('Email already exists.');
+      }
+      // OAuth-only account — merge by adding a password
+      const hashedPassword = await argon2.hash(payload.password);
+      const updatedUser = await this.prisma.user.update({
+        where: { id: existingUser.id },
+        data: { password: hashedPassword },
+        include: { providers: true },
+      });
+      const tokens = await this.generateJwtTokens(updatedUser);
+      await this.storeRefreshToken(updatedUser.id, tokens.refreshToken);
+      return AuthMapper.toSignUpResponse(updatedUser, tokens);
     }
 
     const hashedPassword = await argon2.hash(payload.password);
@@ -84,6 +106,48 @@ export class AuthService {
     await this.mailer.sendVerificationEmail(user.email, user.name, verificationUrl);
 
     return AuthMapper.toSignUpResponse(user, tokens);
+  }
+
+  async handleOAuthLogin(
+    type: OAuthType,
+    providerUid: string,
+    email: string,
+    name: string,
+  ): Promise<OAuthLoginResult> {
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email },
+      include: { providers: true },
+    });
+
+    if (!existingUser) {
+      const created = await this.prisma.user.create({
+        data: { name, email, emailVerified: true },
+      });
+      await this.prisma.userProvider.create({
+        data: { userId: created.id, type, providerUid },
+      });
+      const finalUser = await this.prisma.user.findUniqueOrThrow({
+        where: { id: created.id },
+        include: { providers: true },
+      });
+      const tokens = await this.generateJwtTokens(finalUser);
+      await this.storeRefreshToken(finalUser.id, tokens.refreshToken);
+      return { user: finalUser, tokens };
+    }
+
+    await this.prisma.userProvider.upsert({
+      where: { userId_type: { userId: existingUser.id, type } },
+      create: { userId: existingUser.id, type, providerUid },
+      update: { providerUid },
+    });
+    const finalUser = await this.prisma.user.update({
+      where: { id: existingUser.id },
+      data: { name },
+      include: { providers: true },
+    });
+    const tokens = await this.generateJwtTokens(finalUser);
+    await this.storeRefreshToken(finalUser.id, tokens.refreshToken);
+    return { user: finalUser, tokens };
   }
 
   async login(payload: LoginPayloadDto) {
@@ -146,11 +210,12 @@ export class AuthService {
   async forgotPassword(email: string): Promise<void> {
     const user = await this.findUserByEmail(email);
     if (!user) return;
+    if (!user.password) return;
 
     const token = crypto.randomBytes(32).toString('hex');
     await this.redis.setWithTTL(`pwd:reset:${token}`, 900, user.id);
 
-    const resetUrl = `${env.APP_BASE_URL}/reset-password?token=${token}`;
+    const resetUrl = `${env.CLIENT_BASE_URL}/reset-password?token=${token}`;
     await this.mailer.sendPasswordResetEmail(user.email, user.name, resetUrl);
   }
 
@@ -182,6 +247,18 @@ export class AuthService {
       throw new NotFoundException('User not found.');
     }
 
+    if (!user.password) {
+      throw new UnauthorizedException({
+        message: 'This account uses OAuth login and has no password to reset.',
+        code: 'NO_PASSWORD_ACCOUNT',
+      });
+    }
+
+    const isSame = await argon2.verify(user.password, newPassword);
+    if (isSame) {
+      throw new BadRequestException('New password cannot be the same as the current password.');
+    }
+
     const hashedPassword = await argon2.hash(newPassword);
     await this.prisma.user.update({
       where: { id: userId },
@@ -190,12 +267,23 @@ export class AuthService {
   }
 
   async changePassword(userId: string, oldPassword: string, newPassword: string): Promise<void> {
+    if (oldPassword === newPassword) {
+      throw new BadRequestException('New password cannot be the same as the old password.');
+    }
+
     const user = await this.findUserById(userId);
     if (!user) {
       throw new NotFoundException('User not found.');
     }
 
-    const isValid = await argon2.verify(user.password || '', oldPassword);
+    if (!user.password) {
+      throw new UnauthorizedException({
+        message: 'This account uses OAuth login and has no password to change.',
+        code: 'NO_PASSWORD_ACCOUNT',
+      });
+    }
+
+    const isValid = await argon2.verify(user.password, oldPassword);
     if (!isValid) {
       throw new UnauthorizedException('Current password is incorrect.');
     }
