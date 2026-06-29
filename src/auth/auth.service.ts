@@ -5,6 +5,8 @@ import { MailerService } from '@/mailer/mailer.service';
 import { User } from '@/types/user';
 import {
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -16,6 +18,7 @@ import * as crypto from 'node:crypto';
 import { AuthMapper } from './auth.mapper';
 import { LoginPayloadDto } from './dto/login-dto';
 import { TokenRevokedException } from '@/common/exceptions/token.exception';
+import { TokenType } from './types/token-type.enum';
 
 @Injectable()
 export class AuthService {
@@ -138,6 +141,97 @@ export class AuthService {
       where: { id: userId },
       data: { emailVerified: true },
     });
+  }
+
+  async forgotPassword(email: string): Promise<void> {
+    const user = await this.findUserByEmail(email);
+    if (!user) return;
+
+    const token = crypto.randomBytes(32).toString('hex');
+    await this.redis.setWithTTL(`pwd:reset:${token}`, 900, user.id);
+
+    const resetUrl = `${env.APP_BASE_URL}/reset-password?token=${token}`;
+    await this.mailer.sendPasswordResetEmail(user.email, user.name, resetUrl);
+  }
+
+  async validateToken(token: string, type: TokenType): Promise<void> {
+    const keyMap: Record<TokenType, string> = {
+      [TokenType.RESET_PASSWORD]: `pwd:reset:${token}`,
+    };
+
+    const value = await this.redis.get(keyMap[type]);
+    if (!value) {
+      throw new UnauthorizedException({
+        message: 'Token is invalid or has expired.',
+        code: 'TOKEN_INVALID',
+      });
+    }
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const userId = await this.redis.getAndDelete(`pwd:reset:${token}`);
+    if (!userId) {
+      throw new UnauthorizedException({
+        message: 'Token is invalid or has expired.',
+        code: 'TOKEN_INVALID',
+      });
+    }
+
+    const user = await this.findUserById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    const hashedPassword = await argon2.hash(newPassword);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword },
+    });
+  }
+
+  async changePassword(userId: string, oldPassword: string, newPassword: string): Promise<void> {
+    const user = await this.findUserById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    const isValid = await argon2.verify(user.password || '', oldPassword);
+    if (!isValid) {
+      throw new UnauthorizedException('Current password is incorrect.');
+    }
+
+    const hashedPassword = await argon2.hash(newPassword);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword },
+    });
+
+    await this.redis.setWithTTL(`pwd:change:${userId}`, 1_209_600, new Date().toISOString());
+  }
+
+  async resendVerificationEmail(userId: string): Promise<{ attemptsLeft: number }> {
+    const user = await this.findUserById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+    if (user.emailVerified) {
+      throw new ConflictException('Email is already verified.');
+    }
+
+    const MAX_ATTEMPTS = 3;
+    const count = await this.redis.incrementWithExpiry(`resend:verify:${userId}`, 3600);
+    if (count > MAX_ATTEMPTS) {
+      throw new HttpException(
+        'Too many resend requests. Try again later.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const token = await this.generateEmailVerificationToken(userId);
+    const verificationUrl = `${env.APP_BASE_URL}/api/v1/auth/verify-email?token=${token}`;
+    await this.mailer.sendVerificationEmail(user.email, user.name, verificationUrl);
+
+    return { attemptsLeft: MAX_ATTEMPTS - count };
   }
 
   private async generateEmailVerificationToken(userId: string): Promise<string> {

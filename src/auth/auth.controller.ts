@@ -14,6 +14,12 @@ import {
 import { SignUpPayloadDto } from './dto/sign-up-dto';
 import { AuthService } from './auth.service';
 import { LoginPayloadDto } from './dto/login-dto';
+import {
+  ForgotPasswordDto,
+  ResetPasswordDto,
+  ValidateTokenDto,
+  ChangePasswordDto,
+} from './dto/password.dto';
 import { LoginIntercepter } from './interceptors/LoginInterceptor';
 import { SignupInterceptor } from './interceptors/SignupInterceptor';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -69,5 +75,45 @@ export class AuthController {
   @ResponseMessage('Email verified successfully.')
   async verifyEmail(@Query('token') token: string) {
     await this.auth.verifyEmail(token);
+  }
+
+  @Post('resend-verification')
+  @HttpCode(200)
+  @ResponseMessage('Verification email resent successfully.')
+  async resendVerification(@Req() req: FastifyRequest) {
+    const user = req.user as unknown as JwtPayload;
+    return this.auth.resendVerificationEmail(user.sub);
+  }
+
+  @Post('forgot-password')
+  @Public()
+  @HttpCode(200)
+  @ResponseMessage("If this email is registered, you'll receive a reset link shortly.")
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    await this.auth.forgotPassword(dto.email);
+  }
+
+  @Get('validate-token')
+  @Public()
+  @HttpCode(200)
+  @ResponseMessage('Token is valid.')
+  async validateToken(@Query() dto: ValidateTokenDto) {
+    await this.auth.validateToken(dto.token, dto.type);
+  }
+
+  @Post('reset-password')
+  @Public()
+  @HttpCode(200)
+  @ResponseMessage('Password reset successfully.')
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.auth.resetPassword(dto.token, dto.newPassword);
+  }
+
+  @Post('change-password')
+  @HttpCode(200)
+  @ResponseMessage('Password changed successfully.')
+  async changePassword(@Req() req: FastifyRequest, @Body() dto: ChangePasswordDto) {
+    const user = req.user as unknown as JwtPayload;
+    await this.auth.changePassword(user.sub, dto.oldPassword, dto.newPassword);
   }
 }
