@@ -1,6 +1,7 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { PinoLogger } from 'nestjs-pino';
+import * as http from 'node:http';
 
 interface FastifyErrorLike {
   statusCode: number;
@@ -21,11 +22,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const reply = ctx.getResponse<FastifyReply>();
     const request = ctx.getRequest<FastifyRequest>();
 
-    const { status, message, errors } = this.resolveException(exception);
+    const { status, message, errors, code } = this.resolveException(exception);
 
     const responseBody = {
       success: false,
       statusCode: status,
+      code: code ?? resolveCode(status),
       message,
       errors: errors ?? null,
       path: request.url,
@@ -33,15 +35,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
     };
 
-    this.logger.error(
-      {
-        method: request.method,
-        url: request.url,
-        status,
-        stack: exception instanceof Error ? exception.stack : String(exception),
-      },
-      `[${request.method}] ${request.url} -> ${status} | ${message}`,
-    );
+    if (status >= 500) {
+      this.logger.error(
+        { err: exception, method: request.method, url: request.url, status },
+        `[${request.method}] ${request.url} -> ${status} | ${message}`,
+      );
+    }
 
     reply.status(status).send(responseBody);
   }
@@ -50,6 +49,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     status: number;
     message: string;
     errors: Record<string, unknown>[] | null;
+    code?: string;
   } {
     // NestJS HttpException (includes BadRequestException, NotFoundException, etc.)
     if (exception instanceof HttpException) {
@@ -59,10 +59,21 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       // ValidationPipe throws structured object
       if (typeof response === 'object' && response !== null) {
         const res = response as Record<string, unknown>;
+        const isValidation = Array.isArray(res.message);
+        const customCode = typeof res.code === 'string' ? res.code : undefined;
         return {
           status,
-          message: typeof res.message === 'string' ? res.message : 'Request failed',
-          errors: Array.isArray(res.errors) ? (res.errors as Record<string, unknown>[]) : null,
+          message: isValidation
+            ? ((res.error as string) ?? 'Validation failed')
+            : typeof res.message === 'string'
+              ? res.message
+              : 'Request failed',
+          errors: isValidation
+            ? (res.message as string[]).map((m) => ({ message: m }))
+            : Array.isArray(res.errors)
+              ? (res.errors as Record<string, unknown>[])
+              : null,
+          code: customCode,
         };
       }
 
@@ -136,4 +147,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     return { ...resolved, errors: null };
   }
+}
+
+function resolveCode(statusCode: number): string {
+  const label = http.STATUS_CODES[statusCode];
+  if (!label) return 'UNKNOWN';
+  return label
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]/g, '')
+    .trim()
+    .replace(/ +/g, '_');
 }

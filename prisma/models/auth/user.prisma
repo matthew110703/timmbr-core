@@ -9,7 +9,7 @@ model User {
     name String 
     email String @unique
     phone String? @unique
-    email_verified Boolean @default(false)
+    emailVerified  Boolean @default(false) @map("email_verified")
     password String? 
     lastLoginAt DateTime?
     createdAt DateTime @default(now())
