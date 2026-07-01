@@ -15,6 +15,7 @@ import { AccessTokenGuard } from './auth/guards/access-token.guard';
 import { RedisModule } from './redis/redis.module';
 import { MailerModule } from './mailer/mailer.module';
 import { UserModule } from './user/user.module';
+import { AddressModule } from './address/address.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { UserModule } from './user/user.module';
     MailerModule,
     AuthModule,
     UserModule,
+    AddressModule,
   ],
   controllers: [AppController],
   providers: [
