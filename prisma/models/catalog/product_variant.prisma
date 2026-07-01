@@ -1,0 +1,25 @@
+enum VariantStatus {
+  ACTIVE
+  OUT_OF_STOCK
+  DISCONTINUED
+  HIDDEN
+}
+
+model ProductVariant {
+  id             String        @id @default(uuid())
+  productId      String
+  sku            String        @unique
+  price          Float
+  isDefault      Boolean       @default(false)
+  status         VariantStatus @default(ACTIVE)
+  currency       String        @default("INR")
+  compareAtPrice Float?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  // Relations
+  product         Product          @relation(fields: [productId], references: [id])
+  inventory       Inventory?
+  images          ProductImage[]
+  attributeValues AttributeValue[]
+}

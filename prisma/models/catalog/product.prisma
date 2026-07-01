@@ -1,0 +1,28 @@
+enum ProductStatus {
+  ACTIVE
+  DRAFT
+  ARCHIVED
+}
+
+model Product {
+  id               String        @id @default(uuid())
+  title            String
+  slug             String        @unique
+  description      String?
+  shortDescription String
+  status           ProductStatus @default(DRAFT)
+  hsnCode          String?
+  gstRate          Float         @default(18)
+  brandId          String?
+  categoryId       String
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  // Relations
+  brand           Brand?                @relation(fields: [brandId], references: [id])
+  category        Category              @relation(fields: [categoryId], references: [id])
+  variants        ProductVariant[]
+  images          ProductImage[]
+  attributeValues AttributeValue[]
+  attributeDefs   AttributeDefinition[]
+}

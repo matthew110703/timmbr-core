@@ -1,0 +1,27 @@
+enum AttributeType {
+  STRING
+  INTEGER
+  DECIMAL
+  LIST
+}
+
+enum AttributeScope {
+  PRODUCT
+  VARIANT
+}
+
+model AttributeDefinition {
+  id           String         @id @default(uuid())
+  name         String
+  type         AttributeType
+  unit         String?
+  scope        AttributeScope
+  isFilterable Boolean        @default(false)
+  productId    String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  // Relations
+  product Product?         @relation(fields: [productId], references: [id])
+  values  AttributeValue[]
+}
