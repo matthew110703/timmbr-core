@@ -1,12 +1,13 @@
-import { UserRole } from '@prisma/client';
+import { UserRole, UserStatus } from '@prisma/client';
 import { Address } from './address.type';
 import { UserProvider } from './user-provider.type';
 
-export { UserRole };
+export { UserRole, UserStatus };
 
 export interface User {
   id: string;
   role: UserRole;
+  status: UserStatus;
   name: string;
   email: string;
   phone?: string | null;

@@ -12,7 +12,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { OAuthType } from '@prisma/client';
+import { OAuthType, UserStatus } from '@prisma/client';
 
 export interface OAuthLoginResult {
   user: User & { providers: UserProvider[] };
@@ -25,6 +25,7 @@ import * as crypto from 'node:crypto';
 import { AuthMapper } from './auth.mapper';
 import { LoginPayloadDto } from './dto/login-dto';
 import { TokenRevokedException } from '@/common/exceptions/token.exception';
+import { UserDeactivatedException } from '@/common/exceptions/user.exception';
 import { TokenType } from './types/token-type.enum';
 
 @Injectable()
@@ -155,6 +156,10 @@ export class AuthService {
 
     if (!user) {
       throw new NotFoundException('User not found.');
+    }
+
+    if (user.status === UserStatus.DELETED) {
+      throw new UserDeactivatedException();
     }
 
     const isPasswordValid = await argon2.verify(user?.password || '', payload.password);

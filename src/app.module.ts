@@ -12,10 +12,12 @@ import { GlobalExceptionFilter } from './common/filters';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { AccessTokenGuard } from './auth/guards/access-token.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
 import { RedisModule } from './redis/redis.module';
 import { MailerModule } from './mailer/mailer.module';
 import { UserModule } from './user/user.module';
 import { AddressModule } from './address/address.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -29,6 +31,7 @@ import { AddressModule } from './address/address.module';
     AuthModule,
     UserModule,
     AddressModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [
@@ -36,6 +39,7 @@ import { AddressModule } from './address/address.module';
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AccessTokenGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })
 export class AppModule {}

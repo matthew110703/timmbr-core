@@ -1,12 +1,19 @@
 enum UserRole {
     USER
     ADMIN
+    MASTER
+}
+
+enum UserStatus {
+    ACTIVE
+    DELETED
 }
 
 model User {
     id String @id @default(uuid())
     role UserRole @default(USER)
-    name String 
+    status UserStatus @default(ACTIVE)
+    name String
     email String @unique
     phone String? @unique
     emailVerified  Boolean @default(false) @map("email_verified")
