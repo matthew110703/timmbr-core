@@ -74,7 +74,7 @@ describe('AdminUserService', () => {
       const result = await service.getAll(query);
 
       expect(mockPrismaService.user.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: {}, skip: 0, take: 20 }),
+        expect.objectContaining({ where: { role: { not: UserRole.MASTER } }, skip: 0, take: 20 }),
       );
       expect(result.data).toHaveLength(1);
       expect(result.meta).toEqual({

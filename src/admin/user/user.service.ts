@@ -22,8 +22,8 @@ export class AdminUserService {
     const limit = query.limit ?? 20;
 
     const where: Prisma.UserWhereInput = {
+      role: query.role && query.role !== UserRole.MASTER ? query.role : { not: UserRole.MASTER },
       ...(query.status && { status: query.status }),
-      ...(query.role && { role: query.role }),
     };
 
     const [users, total] = await this.prisma.$transaction(async (tx) => {

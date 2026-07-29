@@ -1,6 +1,8 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsEnum, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { UserRole, UserStatus } from '@prisma/client';
+
+const ALLOWED_ADMIN_QUERY_ROLES = [UserRole.USER, UserRole.ADMIN] as const;
 
 export class GetAdminUsersQueryDto {
   @Type(() => Number)
@@ -22,8 +24,8 @@ export class GetAdminUsersQueryDto {
   @IsOptional()
   status?: UserStatus;
 
-  @IsEnum(UserRole, {
-    message: `Role must be one of: ${Object.values(UserRole).join(', ')}`,
+  @IsIn(ALLOWED_ADMIN_QUERY_ROLES, {
+    message: `Role must be one of: ${ALLOWED_ADMIN_QUERY_ROLES.join(', ')}`,
   })
   @IsOptional()
   role?: UserRole;
