@@ -1,12 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CategoryStatus } from '@prisma/client';
-import { CategoriesController } from './categories.controller';
-import { CategoriesService } from './categories.service';
+import { CategoryAdminController } from './category.admin.controller';
+import { CategoryService } from './category.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { GetCategoriesQueryDto } from './dto/get-categories-query.dto';
 
-const mockCategoriesService = {
+const mockCategoryService = {
   getAllCategories: jest.fn(),
   getCategoryTree: jest.fn(),
   getCategoryById: jest.fn(),
@@ -29,16 +29,16 @@ const mockCategoryResponse = {
   updatedAt: new Date(),
 };
 
-describe('CategoriesController', () => {
-  let controller: CategoriesController;
+describe('CategoryAdminController', () => {
+  let controller: CategoryAdminController;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      controllers: [CategoriesController],
-      providers: [{ provide: CategoriesService, useValue: mockCategoriesService }],
+      controllers: [CategoryAdminController],
+      providers: [{ provide: CategoryService, useValue: mockCategoryService }],
     }).compile();
 
-    controller = module.get<CategoriesController>(CategoriesController);
+    controller = module.get<CategoryAdminController>(CategoryAdminController);
   });
 
   afterEach(() => jest.resetAllMocks());
@@ -61,11 +61,11 @@ describe('CategoriesController', () => {
           hasPrevPage: false,
         },
       };
-      mockCategoriesService.getAllCategories.mockResolvedValue(paginatedResult);
+      mockCategoryService.getAllCategories.mockResolvedValue(paginatedResult);
 
       const result = await controller.getAll(query);
 
-      expect(mockCategoriesService.getAllCategories).toHaveBeenCalledWith(query);
+      expect(mockCategoryService.getAllCategories).toHaveBeenCalledWith(query);
       expect(result).toBe(paginatedResult);
     });
   });
@@ -73,22 +73,22 @@ describe('CategoriesController', () => {
   describe('getTree', () => {
     it('delegates to service.getCategoryTree with optional parentId', async () => {
       const treeResult = [{ ...mockCategoryResponse, children: [] }];
-      mockCategoriesService.getCategoryTree.mockResolvedValue(treeResult);
+      mockCategoryService.getCategoryTree.mockResolvedValue(treeResult);
 
       const result = await controller.getTree(CAT_ID_1);
 
-      expect(mockCategoriesService.getCategoryTree).toHaveBeenCalledWith(CAT_ID_1);
+      expect(mockCategoryService.getCategoryTree).toHaveBeenCalledWith(CAT_ID_1);
       expect(result).toBe(treeResult);
     });
   });
 
   describe('getCategoryById', () => {
     it('delegates to service.getCategoryById', async () => {
-      mockCategoriesService.getCategoryById.mockResolvedValue(mockCategoryResponse);
+      mockCategoryService.getCategoryById.mockResolvedValue(mockCategoryResponse);
 
       const result = await controller.getCategoryById(CAT_ID_1);
 
-      expect(mockCategoriesService.getCategoryById).toHaveBeenCalledWith(CAT_ID_1);
+      expect(mockCategoryService.getCategoryById).toHaveBeenCalledWith(CAT_ID_1);
       expect(result).toBe(mockCategoryResponse);
     });
   });
@@ -99,11 +99,11 @@ describe('CategoriesController', () => {
         name: 'Electronics',
         status: CategoryStatus.ACTIVE,
       };
-      mockCategoriesService.create.mockResolvedValue(mockCategoryResponse);
+      mockCategoryService.create.mockResolvedValue(mockCategoryResponse);
 
       const result = await controller.create(dto);
 
-      expect(mockCategoriesService.create).toHaveBeenCalledWith(dto);
+      expect(mockCategoryService.create).toHaveBeenCalledWith(dto);
       expect(result).toBe(mockCategoryResponse);
     });
   });
@@ -111,22 +111,22 @@ describe('CategoriesController', () => {
   describe('update', () => {
     it('delegates to service.update', async () => {
       const dto: UpdateCategoryDto = { name: 'Updated Electronics' };
-      mockCategoriesService.update.mockResolvedValue(mockCategoryResponse);
+      mockCategoryService.update.mockResolvedValue(mockCategoryResponse);
 
       const result = await controller.update(CAT_ID_1, dto);
 
-      expect(mockCategoriesService.update).toHaveBeenCalledWith(CAT_ID_1, dto);
+      expect(mockCategoryService.update).toHaveBeenCalledWith(CAT_ID_1, dto);
       expect(result).toBe(mockCategoryResponse);
     });
   });
 
   describe('delete', () => {
     it('delegates to service.delete', async () => {
-      mockCategoriesService.delete.mockResolvedValue(mockCategoryResponse);
+      mockCategoryService.delete.mockResolvedValue(mockCategoryResponse);
 
       const result = await controller.delete(CAT_ID_1);
 
-      expect(mockCategoriesService.delete).toHaveBeenCalledWith(CAT_ID_1);
+      expect(mockCategoryService.delete).toHaveBeenCalledWith(CAT_ID_1);
       expect(result).toBe(mockCategoryResponse);
     });
   });

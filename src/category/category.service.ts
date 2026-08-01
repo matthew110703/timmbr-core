@@ -1,4 +1,3 @@
-import { PrismaService } from '@/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';
 import { GetCategoriesQueryDto } from './dto/get-categories-query.dto';
 import { PaginatedResult } from '@/types/api-response.types';
@@ -14,25 +13,22 @@ import {
 } from '@/common/exceptions/category.exception';
 import { generateSlug } from '@/utils/helpers';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import { CategoryRepository } from './category.repository';
 
 @Injectable()
-export class CategoriesService {
-  constructor(private readonly prisma: PrismaService) {}
+export class CategoryService {
+  constructor(private readonly categoryRepository: CategoryRepository) {}
 
   async getCategoryTree(rootParentId?: string): Promise<CategoryTreeResponseDto[]> {
     if (rootParentId) {
-      const parentCategory = await this.prisma.category.findUnique({
-        where: { id: rootParentId },
-      });
+      const parentCategory = await this.categoryRepository.findById(rootParentId);
 
       if (!parentCategory) {
         throw new CategoryNotFoundException();
       }
     }
 
-    const allCategories = await this.prisma.category.findMany({
-      orderBy: { name: 'asc' },
-    });
+    const allCategories = await this.categoryRepository.findAllSortedByName();
 
     const buildTree = (parentId: string | null): CategoryTreeResponseDto[] => {
       return allCategories
@@ -47,11 +43,9 @@ export class CategoriesService {
   }
 
   async create(dto: CreateCategoryDto): Promise<CategoryResponseDto> {
-    const existingCategory = await this.prisma.category.findFirst({
-      where: {
-        name: dto.name,
-        ...(dto.parentId && { parentId: dto.parentId }),
-      },
+    const existingCategory = await this.categoryRepository.findFirst({
+      name: dto.name,
+      ...(dto.parentId && { parentId: dto.parentId }),
     });
 
     if (existingCategory) {
@@ -60,24 +54,20 @@ export class CategoriesService {
 
     const slug = generateSlug(dto.name);
 
-    const category = await this.prisma.category.create({
-      data: {
-        name: dto.name,
-        description: dto.description,
-        logoUrl: dto.logoUrl,
-        status: dto.status,
-        parentId: dto.parentId,
-        slug: slug,
-      },
+    const category = await this.categoryRepository.create({
+      name: dto.name,
+      description: dto.description,
+      logoUrl: dto.logoUrl,
+      status: dto.status,
+      parentId: dto.parentId,
+      slug: slug,
     });
 
     return CategoryMapper.toCreateResponse(category);
   }
 
   async update(catId: string, dto: UpdateCategoryDto): Promise<CategoryResponseDto> {
-    const existingCategory = await this.prisma.category.findUnique({
-      where: { id: catId },
-    });
+    const existingCategory = await this.categoryRepository.findById(catId);
 
     if (!existingCategory) {
       throw new CategoryNotFoundException();
@@ -95,12 +85,10 @@ export class CategoriesService {
       dto.parentId !== undefined && dto.parentId !== existingCategory.parentId;
 
     if (isNameChanged || isParentChanged) {
-      const duplicate = await this.prisma.category.findFirst({
-        where: {
-          id: { not: catId },
-          name: targetName,
-          parentId: targetParentId,
-        },
+      const duplicate = await this.categoryRepository.findFirst({
+        id: { not: catId },
+        name: targetName,
+        parentId: targetParentId,
       });
 
       if (duplicate) {
@@ -108,15 +96,12 @@ export class CategoriesService {
       }
     }
 
-    const category = await this.prisma.category.update({
-      where: { id: catId },
-      data: {
-        ...(dto.name && { name: dto.name }),
-        ...(dto.description !== undefined && { description: dto.description }),
-        ...(dto.logoUrl !== undefined && { logoUrl: dto.logoUrl }),
-        ...(dto.status && { status: dto.status }),
-        ...(dto.parentId !== undefined && { parentId: dto.parentId }),
-      },
+    const category = await this.categoryRepository.update(catId, {
+      ...(dto.name && { name: dto.name }),
+      ...(dto.description !== undefined && { description: dto.description }),
+      ...(dto.logoUrl !== undefined && { logoUrl: dto.logoUrl }),
+      ...(dto.status && { status: dto.status }),
+      ...(dto.parentId !== undefined && { parentId: dto.parentId }),
     });
 
     return CategoryMapper.toUpdateResponse(category);
@@ -133,17 +118,7 @@ export class CategoriesService {
       ...(query.parentId && { parentId: query.parentId }),
     };
 
-    const [categories, total] = await this.prisma.$transaction(async (tx) => {
-      const categories = await tx.category.findMany({
-        where,
-        include: { parent: true },
-        skip: (page - 1) * limit,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-      });
-      const total = await tx.category.count({ where });
-      return [categories, total] as const;
-    });
+    const [categories, total] = await this.categoryRepository.findPaginated(where, page, limit);
 
     const totalPages = Math.ceil(total / limit);
 
@@ -161,10 +136,7 @@ export class CategoriesService {
   }
 
   async getCategoryById(catId: string): Promise<CategoryResponseDto> {
-    const category = await this.prisma.category.findUnique({
-      where: { id: catId },
-      include: { parent: true },
-    });
+    const category = await this.categoryRepository.findByIdWithParent(catId);
 
     if (!category) {
       throw new CategoryNotFoundException();
@@ -174,17 +146,13 @@ export class CategoriesService {
   }
 
   async delete(catId: string): Promise<CategoryResponseDto> {
-    const existingCategory = await this.prisma.category.findUnique({
-      where: { id: catId },
-    });
+    const existingCategory = await this.categoryRepository.findById(catId);
 
     if (!existingCategory) {
       throw new CategoryNotFoundException();
     }
 
-    const category = await this.prisma.category.delete({
-      where: { id: catId },
-    });
+    const category = await this.categoryRepository.delete(catId);
 
     return CategoryMapper.toResponse(category);
   }

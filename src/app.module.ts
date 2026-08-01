@@ -18,6 +18,7 @@ import { MailerModule } from './mailer/mailer.module';
 import { UserModule } from './user/user.module';
 import { AddressModule } from './address/address.module';
 import { AdminModule } from './admin/admin.module';
+import { CategoryModule } from './category/category.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AdminModule } from './admin/admin.module';
     UserModule,
     AddressModule,
     AdminModule,
+    CategoryModule,
   ],
   controllers: [AppController],
   providers: [

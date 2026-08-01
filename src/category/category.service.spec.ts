@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CategoryStatus } from '@prisma/client';
-import { PrismaService } from '@/prisma/prisma.service';
-import { CategoriesService } from './categories.service';
+import { CategoryService } from './category.service';
+import { CategoryRepository } from './category.repository';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { GetCategoriesQueryDto } from './dto/get-categories-query.dto';
@@ -39,32 +39,29 @@ const subCategory = {
   updatedAt: new Date('2026-01-02'),
 };
 
-const mockPrismaService = {
-  category: {
-    findMany: jest.fn(),
-    count: jest.fn(),
-    findUnique: jest.fn(),
-    findFirst: jest.fn(),
-    create: jest.fn(),
-    update: jest.fn(),
-    delete: jest.fn(),
-  },
-  $transaction: jest.fn(),
+const mockCategoryRepository = {
+  findById: jest.fn(),
+  findByIdWithParent: jest.fn(),
+  findFirst: jest.fn(),
+  findAllSortedByName: jest.fn(),
+  findPaginated: jest.fn(),
+  create: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
 };
 
-describe('CategoriesService', () => {
-  let service: CategoriesService;
+describe('CategoryService', () => {
+  let service: CategoryService;
 
   beforeEach(async () => {
-    mockPrismaService.$transaction.mockImplementation(
-      (fn: (tx: typeof mockPrismaService) => unknown) => fn(mockPrismaService),
-    );
-
     const module: TestingModule = await Test.createTestingModule({
-      providers: [CategoriesService, { provide: PrismaService, useValue: mockPrismaService }],
+      providers: [
+        CategoryService,
+        { provide: CategoryRepository, useValue: mockCategoryRepository },
+      ],
     }).compile();
 
-    service = module.get<CategoriesService>(CategoriesService);
+    service = module.get<CategoryService>(CategoryService);
   });
 
   afterEach(() => jest.resetAllMocks());
@@ -77,7 +74,7 @@ describe('CategoriesService', () => {
 
   describe('getCategoryTree', () => {
     it('returns the full root category tree when no rootParentId is provided', async () => {
-      mockPrismaService.category.findMany.mockResolvedValue([baseCategory, subCategory]);
+      mockCategoryRepository.findAllSortedByName.mockResolvedValue([baseCategory, subCategory]);
 
       const tree = await service.getCategoryTree();
 
@@ -96,20 +93,18 @@ describe('CategoriesService', () => {
     });
 
     it('returns subtree starting from rootParentId when valid rootParentId is provided', async () => {
-      mockPrismaService.category.findUnique.mockResolvedValue(baseCategory);
-      mockPrismaService.category.findMany.mockResolvedValue([baseCategory, subCategory]);
+      mockCategoryRepository.findById.mockResolvedValue(baseCategory);
+      mockCategoryRepository.findAllSortedByName.mockResolvedValue([baseCategory, subCategory]);
 
       const tree = await service.getCategoryTree(CAT_ID_1);
 
-      expect(mockPrismaService.category.findUnique).toHaveBeenCalledWith({
-        where: { id: CAT_ID_1 },
-      });
+      expect(mockCategoryRepository.findById).toHaveBeenCalledWith(CAT_ID_1);
       expect(tree).toHaveLength(1);
       expect(tree[0].id).toBe(CAT_ID_2);
     });
 
     it('throws CategoryNotFoundException when invalid rootParentId is provided', async () => {
-      mockPrismaService.category.findUnique.mockResolvedValue(null);
+      mockCategoryRepository.findById.mockResolvedValue(null);
 
       await expect(service.getCategoryTree(NON_EXISTENT_ID)).rejects.toThrow(
         CategoryNotFoundException,
@@ -128,25 +123,25 @@ describe('CategoriesService', () => {
     };
 
     it('creates a category and returns mapped response', async () => {
-      mockPrismaService.category.findFirst.mockResolvedValue(null);
-      mockPrismaService.category.create.mockResolvedValue(baseCategory);
+      mockCategoryRepository.findFirst.mockResolvedValue(null);
+      mockCategoryRepository.create.mockResolvedValue(baseCategory);
 
       const result = await service.create(dto);
 
-      expect(mockPrismaService.category.findFirst).toHaveBeenCalledWith({
-        where: { name: dto.name },
+      expect(mockCategoryRepository.findFirst).toHaveBeenCalledWith({
+        name: dto.name,
       });
-      expect(mockPrismaService.category.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
+      expect(mockCategoryRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
           name: dto.name,
           slug: 'electronics',
         }),
-      });
+      );
       expect(result).toMatchObject({ id: CAT_ID_1, name: 'Electronics' });
     });
 
     it('throws CategoryAlreadyExistsException when duplicate root category exists', async () => {
-      mockPrismaService.category.findFirst.mockResolvedValue(baseCategory);
+      mockCategoryRepository.findFirst.mockResolvedValue(baseCategory);
 
       await expect(service.create(dto)).rejects.toThrow(CategoryAlreadyExistsException);
     });
@@ -156,7 +151,7 @@ describe('CategoriesService', () => {
         ...dto,
         parentId: CAT_ID_1,
       };
-      mockPrismaService.category.findFirst.mockResolvedValue(subCategory);
+      mockCategoryRepository.findFirst.mockResolvedValue(subCategory);
 
       await expect(service.create(childDto)).rejects.toThrow(CategoryAlreadyExistsException);
     });
@@ -173,27 +168,27 @@ describe('CategoriesService', () => {
         name: 'Updated Electronics',
         slug: 'updated-electronics',
       };
-      mockPrismaService.category.findUnique.mockResolvedValue(baseCategory);
-      mockPrismaService.category.findFirst.mockResolvedValue(null);
-      mockPrismaService.category.update.mockResolvedValue(updatedCategory);
+      mockCategoryRepository.findById.mockResolvedValue(baseCategory);
+      mockCategoryRepository.findFirst.mockResolvedValue(null);
+      mockCategoryRepository.update.mockResolvedValue(updatedCategory);
 
       const result = await service.update(CAT_ID_1, dto);
 
-      expect(mockPrismaService.category.update).toHaveBeenCalledWith({
-        where: { id: CAT_ID_1 },
-        data: expect.objectContaining({ name: 'Updated Electronics' }),
-      });
+      expect(mockCategoryRepository.update).toHaveBeenCalledWith(
+        CAT_ID_1,
+        expect.objectContaining({ name: 'Updated Electronics' }),
+      );
       expect(result.name).toBe('Updated Electronics');
     });
 
     it('throws CategoryNotFoundException if category to update does not exist', async () => {
-      mockPrismaService.category.findUnique.mockResolvedValue(null);
+      mockCategoryRepository.findById.mockResolvedValue(null);
 
       await expect(service.update(NON_EXISTENT_ID, dto)).rejects.toThrow(CategoryNotFoundException);
     });
 
     it('throws CategorySelfReferentialException when setting parentId to self', async () => {
-      mockPrismaService.category.findUnique.mockResolvedValue(baseCategory);
+      mockCategoryRepository.findById.mockResolvedValue(baseCategory);
 
       await expect(service.update(CAT_ID_1, { parentId: CAT_ID_1 })).rejects.toThrow(
         CategorySelfReferentialException,
@@ -201,8 +196,8 @@ describe('CategoriesService', () => {
     });
 
     it('throws CategoryAlreadyExistsException when updated name collides with another category', async () => {
-      mockPrismaService.category.findUnique.mockResolvedValue(baseCategory);
-      mockPrismaService.category.findFirst.mockResolvedValue(subCategory);
+      mockCategoryRepository.findById.mockResolvedValue(baseCategory);
+      mockCategoryRepository.findFirst.mockResolvedValue(subCategory);
 
       await expect(service.update(CAT_ID_1, { name: 'Smartphones' })).rejects.toThrow(
         CategoryAlreadyExistsException,
@@ -214,8 +209,7 @@ describe('CategoriesService', () => {
 
   describe('getAllCategories', () => {
     it('returns paginated categories list with default pagination values', async () => {
-      mockPrismaService.category.findMany.mockResolvedValue([baseCategory]);
-      mockPrismaService.category.count.mockResolvedValue(1);
+      mockCategoryRepository.findPaginated.mockResolvedValue([[baseCategory], 1]);
 
       const query: GetCategoriesQueryDto = {};
       const result = await service.getAllCategories(query);
@@ -232,8 +226,7 @@ describe('CategoriesService', () => {
     });
 
     it('filters by status and parentId when query parameters are supplied', async () => {
-      mockPrismaService.category.findMany.mockResolvedValue([]);
-      mockPrismaService.category.count.mockResolvedValue(0);
+      mockCategoryRepository.findPaginated.mockResolvedValue([[], 0]);
 
       const query: GetCategoriesQueryDto = {
         status: CategoryStatus.ACTIVE,
@@ -244,12 +237,10 @@ describe('CategoriesService', () => {
 
       await service.getAllCategories(query);
 
-      expect(mockPrismaService.category.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { status: CategoryStatus.ACTIVE, parentId: CAT_ID_1 },
-          skip: 0,
-          take: 5,
-        }),
+      expect(mockCategoryRepository.findPaginated).toHaveBeenCalledWith(
+        { status: CategoryStatus.ACTIVE, parentId: CAT_ID_1 },
+        1,
+        5,
       );
     });
   });
@@ -259,7 +250,7 @@ describe('CategoriesService', () => {
   describe('getCategoryById', () => {
     it('returns CategoryResponseDto with parent detail when category exists', async () => {
       const categoryWithParent = { ...subCategory, parent: baseCategory };
-      mockPrismaService.category.findUnique.mockResolvedValue(categoryWithParent);
+      mockCategoryRepository.findByIdWithParent.mockResolvedValue(categoryWithParent);
 
       const result = await service.getCategoryById(CAT_ID_2);
 
@@ -271,7 +262,7 @@ describe('CategoriesService', () => {
     });
 
     it('throws CategoryNotFoundException when category is missing', async () => {
-      mockPrismaService.category.findUnique.mockResolvedValue(null);
+      mockCategoryRepository.findByIdWithParent.mockResolvedValue(null);
 
       await expect(service.getCategoryById(NON_EXISTENT_ID)).rejects.toThrow(
         CategoryNotFoundException,
@@ -283,19 +274,17 @@ describe('CategoriesService', () => {
 
   describe('delete', () => {
     it('deletes existing category and returns mapped response', async () => {
-      mockPrismaService.category.findUnique.mockResolvedValue(baseCategory);
-      mockPrismaService.category.delete.mockResolvedValue(baseCategory);
+      mockCategoryRepository.findById.mockResolvedValue(baseCategory);
+      mockCategoryRepository.delete.mockResolvedValue(baseCategory);
 
       const result = await service.delete(CAT_ID_1);
 
-      expect(mockPrismaService.category.delete).toHaveBeenCalledWith({
-        where: { id: CAT_ID_1 },
-      });
+      expect(mockCategoryRepository.delete).toHaveBeenCalledWith(CAT_ID_1);
       expect(result.id).toBe(CAT_ID_1);
     });
 
     it('throws CategoryNotFoundException when deleting non-existent category', async () => {
-      mockPrismaService.category.findUnique.mockResolvedValue(null);
+      mockCategoryRepository.findById.mockResolvedValue(null);
 
       await expect(service.delete(NON_EXISTENT_ID)).rejects.toThrow(CategoryNotFoundException);
     });

@@ -1,15 +1,15 @@
 import { ResponseMessage, Roles } from '@/decorators';
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import { CategoriesService } from './categories.service';
+import { CategoryService } from './category.service';
 import { GetCategoriesQueryDto } from './dto/get-categories-query.dto';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 
 @Controller('admin/categories')
 @Roles(UserRole.ADMIN, UserRole.MASTER)
-export class CategoriesController {
-  constructor(private service: CategoriesService) {}
+export class CategoryAdminController {
+  constructor(private service: CategoryService) {}
 
   @Get()
   @ResponseMessage('Categories fetched successfully.')
