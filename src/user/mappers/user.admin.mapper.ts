@@ -1,5 +1,5 @@
 import { User, UserProvider } from '@/types/user';
-import { AdminCreateUserResponseDto, AdminUserResponseDto } from './dto/admin-user-response.dto';
+import { AdminCreateUserResponseDto, AdminUserResponseDto } from '../dto/admin-user-response.dto';
 
 export class AdminUserMapper {
   static toResponse(user: User & { providers: UserProvider[] }): AdminUserResponseDto {

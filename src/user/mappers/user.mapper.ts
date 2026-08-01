@@ -1,5 +1,5 @@
 import { User, UserProvider } from '@/types/user';
-import { UserProfileDto } from './dto/user-profile.dto';
+import { UserProfileDto } from '../dto/user-profile.dto';
 
 export class UserMapper {
   static toProfileResponse(user: User & { providers: UserProvider[] }): UserProfileDto {

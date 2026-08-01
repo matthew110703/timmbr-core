@@ -1,15 +1,15 @@
 import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles, ResponseMessage } from '@/decorators';
-import { AdminUserService } from './user.service';
-import { GetAdminUsersQueryDto } from './dto/get-admin-users-query.dto';
-import { CreateAdminUserDto } from './dto/create-admin-user.dto';
-import { UpdateAdminUserDto } from './dto/update-admin-user.dto';
+import { UserAdminService } from '../services/user.admin.service';
+import { GetAdminUsersQueryDto } from '../dto/get-admin-users-query.dto';
+import { CreateAdminUserDto } from '../dto/create-admin-user.dto';
+import { UpdateAdminUserDto } from '../dto/update-admin-user.dto';
 
 @Controller('admin/users')
 @Roles(UserRole.ADMIN, UserRole.MASTER)
-export class AdminUserController {
-  constructor(private adminUser: AdminUserService) {}
+export class UserAdminController {
+  constructor(private readonly adminUser: UserAdminService) {}
 
   @Get()
   @ResponseMessage('Users fetched successfully.')

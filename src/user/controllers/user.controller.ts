@@ -2,12 +2,12 @@ import { ResponseMessage } from '@/decorators';
 import { Body, Controller, Get, HttpCode, Put, Req } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import { JwtPayload } from '@/auth/types/jwt.types';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { UserService } from './user.service';
+import { UpdateUserDto } from '../dto/update-user.dto';
+import { UserService } from '../services/user.service';
 
 @Controller('user')
 export class UserController {
-  constructor(private user: UserService) {}
+  constructor(private readonly user: UserService) {}
 
   @Get('me')
   @ResponseMessage('Profile fetched successfully.')
