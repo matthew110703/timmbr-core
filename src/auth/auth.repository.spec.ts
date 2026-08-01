@@ -134,11 +134,24 @@ describe('AuthRepository', () => {
   describe('createEmailUser', () => {
     it('delegates to prisma.user.create with providers', async () => {
       mockPrismaService.user.create.mockResolvedValue(mockUser);
+      const userData = {
+        id: mockUser.id,
+        name: mockUser.name,
+        email: mockUser.email,
+        password: mockUser.password,
+        phone: mockUser.phone,
+        role: mockUser.role,
+        status: mockUser.status,
+        emailVerified: mockUser.emailVerified,
+        lastLoginAt: mockUser.lastLoginAt,
+        createdAt: mockUser.createdAt,
+        updatedAt: mockUser.updatedAt,
+      };
 
-      const result = await repository.createEmailUser(mockUser);
+      const result = await repository.createEmailUser(userData);
 
       expect(mockPrismaService.user.create).toHaveBeenCalledWith({
-        data: mockUser,
+        data: userData,
         include: { providers: true },
       });
       expect(result).toBe(mockUser);
@@ -150,9 +163,22 @@ describe('AuthRepository', () => {
       mockPrismaService.user.create.mockResolvedValue(mockUser);
       mockPrismaService.userProvider.create.mockResolvedValue(mockUserProvider);
       mockPrismaService.user.findUniqueOrThrow.mockResolvedValue(mockUser);
+      const userData = {
+        id: mockUser.id,
+        name: mockUser.name,
+        email: mockUser.email,
+        password: mockUser.password,
+        phone: mockUser.phone,
+        role: mockUser.role,
+        status: mockUser.status,
+        emailVerified: mockUser.emailVerified,
+        lastLoginAt: mockUser.lastLoginAt,
+        createdAt: mockUser.createdAt,
+        updatedAt: mockUser.updatedAt,
+      };
 
       const result = await repository.createOAuthUserAndProvider(
-        mockUser,
+        userData,
         OAuthType.GOOGLE,
         'google-uid-123',
       );

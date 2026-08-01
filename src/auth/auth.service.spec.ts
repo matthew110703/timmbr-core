@@ -10,7 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MailerService } from '@/mailer/mailer.service';
 import { RedisService } from '@/redis/redis.service';
-import { UserRole } from '@prisma/client';
+import { UserRole, UserStatus } from '@prisma/client';
 import { User } from '@/common/types/user';
 import { TokenRevokedException } from '@/common/exceptions/token.exception';
 import { AuthService } from './auth.service';
@@ -33,6 +33,7 @@ const USER_NAME = 'Test User';
 const baseUser: User = {
   id: USER_ID,
   role: UserRole.USER,
+  status: UserStatus.ACTIVE,
   name: USER_NAME,
   email: USER_EMAIL,
   phone: null,

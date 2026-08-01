@@ -20,7 +20,7 @@ import {
   ValidateTokenDto,
   ChangePasswordDto,
 } from './dto/password.dto';
-import { LoginIntercepter } from './interceptors/LoginInterceptor';
+import { LoginInterceptor } from './interceptors/LoginInterceptor';
 import { SignupInterceptor } from './interceptors/SignupInterceptor';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { getCookieOptions } from '@/config/cookie.config';
@@ -44,7 +44,7 @@ export class AuthController {
   @Post('login')
   @Public()
   @HttpCode(200)
-  @UseInterceptors(LoginIntercepter)
+  @UseInterceptors(LoginInterceptor)
   @ResponseMessage('Login successful.')
   login(@Body() dto: LoginPayloadDto) {
     return this.auth.login(dto);

@@ -25,7 +25,9 @@ export class AddressRepository {
     });
   }
 
-  async create(data: Prisma.AddressCreateInput): Promise<Address> {
+  async create(
+    data: Prisma.AddressCreateInput | Prisma.AddressUncheckedCreateInput,
+  ): Promise<Address> {
     return this.prisma.address.create({
       data,
     });
@@ -33,7 +35,7 @@ export class AddressRepository {
 
   async createWithNewDefault(
     userId: string,
-    data: Prisma.AddressUncheckedCreateInput,
+    data: Prisma.AddressCreateInput | Prisma.AddressUncheckedCreateInput,
   ): Promise<Address> {
     return this.prisma.$transaction(async (tx) => {
       await tx.address.updateMany({
@@ -49,7 +51,10 @@ export class AddressRepository {
     });
   }
 
-  async update(id: string, data: Prisma.AddressUpdateInput): Promise<Address> {
+  async update(
+    id: string,
+    data: Prisma.AddressUpdateInput | Prisma.AddressUncheckedUpdateInput,
+  ): Promise<Address> {
     return this.prisma.address.update({
       where: { id },
       data,

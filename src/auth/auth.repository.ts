@@ -1,10 +1,7 @@
-import { Injectable } from '@nestjs/common';
-import { OAuthType, Prisma, User, UserProvider } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
-
-export type UserWithProviders = User & {
-  providers: UserProvider[];
-};
+import { Injectable } from '@nestjs/common';
+import { OAuthType, Prisma, User } from '@prisma/client';
+import { UserWithProviders } from '@/common/types/user';
 
 @Injectable()
 export class AuthRepository {
@@ -43,7 +40,9 @@ export class AuthRepository {
     });
   }
 
-  async createEmailUser(data: Prisma.UserCreateInput): Promise<UserWithProviders> {
+  async createEmailUser(
+    data: Prisma.UserCreateInput | Prisma.UserUncheckedCreateInput,
+  ): Promise<UserWithProviders> {
     return this.prisma.user.create({
       data,
       include: { providers: true },
@@ -51,7 +50,7 @@ export class AuthRepository {
   }
 
   async createOAuthUserAndProvider(
-    userData: Prisma.UserCreateInput,
+    userData: Prisma.UserCreateInput | Prisma.UserUncheckedCreateInput,
     type: OAuthType,
     providerUid: string,
   ): Promise<UserWithProviders> {
@@ -69,19 +68,20 @@ export class AuthRepository {
     });
   }
 
-  async upsertUserProvider(
-    userId: string,
-    type: OAuthType,
-    providerUid: string,
-  ): Promise<UserProvider> {
+  async upsertUserProvider(userId: string, type: OAuthType, providerUid: string) {
     return this.prisma.userProvider.upsert({
-      where: { userId_type: { userId, type } },
+      where: {
+        userId_type: { userId, type },
+      },
       create: { userId, type, providerUid },
       update: { providerUid },
     });
   }
 
-  async updateUser(id: string, data: Prisma.UserUpdateInput): Promise<UserWithProviders> {
+  async updateUser(
+    id: string,
+    data: Prisma.UserUpdateInput | Prisma.UserUncheckedUpdateInput,
+  ): Promise<UserWithProviders> {
     return this.prisma.user.update({
       where: { id },
       data,
@@ -89,16 +89,16 @@ export class AuthRepository {
     });
   }
 
-  async updateLastLoginAt(userId: string): Promise<User> {
+  async updateLastLoginAt(id: string): Promise<User> {
     return this.prisma.user.update({
-      where: { id: userId },
+      where: { id },
       data: { lastLoginAt: new Date() },
     });
   }
 
-  async updateEmailVerified(userId: string): Promise<User> {
+  async updateEmailVerified(id: string): Promise<User> {
     return this.prisma.user.update({
-      where: { id: userId },
+      where: { id },
       data: { emailVerified: true },
     });
   }

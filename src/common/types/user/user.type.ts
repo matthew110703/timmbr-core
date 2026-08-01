@@ -19,3 +19,7 @@ export interface User {
   providers?: UserProvider[];
   addresses?: Address[];
 }
+
+export type UserWithProviders = User & {
+  providers: UserProvider[];
+};

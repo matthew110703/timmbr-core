@@ -6,7 +6,7 @@ import { FastifyReply } from 'fastify';
 import { getCookieOptions } from '@/config/cookie.config';
 
 @Injectable()
-export class LoginIntercepter implements NestInterceptor {
+export class LoginInterceptor implements NestInterceptor {
   constructor(private readonly auth: AuthService) {}
 
   intercept(

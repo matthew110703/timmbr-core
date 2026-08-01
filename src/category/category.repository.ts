@@ -53,13 +53,18 @@ export class CategoryRepository {
     });
   }
 
-  async create(data: Prisma.CategoryCreateInput): Promise<Category> {
+  async create(
+    data: Prisma.CategoryCreateInput | Prisma.CategoryUncheckedCreateInput,
+  ): Promise<Category> {
     return this.prisma.category.create({
       data,
     });
   }
 
-  async update(id: string, data: Prisma.CategoryUpdateInput): Promise<Category> {
+  async update(
+    id: string,
+    data: Prisma.CategoryUpdateInput | Prisma.CategoryUncheckedUpdateInput,
+  ): Promise<Category> {
     return this.prisma.category.update({
       where: { id },
       data,
