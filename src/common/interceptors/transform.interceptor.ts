@@ -4,14 +4,14 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import * as http from 'node:http';
-import { RESPONSE_MESSAGE_KEY } from '@/decorators/response-message.decorator';
-import { SKIP_TRANSFORM_KEY } from '@/decorators/skip-transform.decorator';
+import { RESPONSE_MESSAGE_KEY } from '@/common/decorators/response-message.decorator';
+import { SKIP_TRANSFORM_KEY } from '@/common/decorators/skip-transform.decorator';
 import {
   ApiSuccessResponse,
   MessageResult,
   PaginatedApiResponse,
   PaginatedResult,
-} from '@/types/api-response.types';
+} from '@/common/types/api-response.types';
 
 @Injectable()
 export class TransformInterceptor<T> implements NestInterceptor<

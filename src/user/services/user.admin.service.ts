@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import * as argon2 from 'argon2';
-import { PaginatedResult } from '@/types/api-response.types';
+import { PaginatedResult } from '@/common/types/api-response.types';
 import {
   EmailAlreadyExistsException,
   UserNotFoundException,

@@ -9,12 +9,12 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MailerService } from '@/mailer/mailer.service';
-import { PrismaService } from '@/prisma/prisma.service';
 import { RedisService } from '@/redis/redis.service';
 import { UserRole } from '@prisma/client';
-import { User } from '@/types/user';
+import { User } from '@/common/types/user';
 import { TokenRevokedException } from '@/common/exceptions/token.exception';
 import { AuthService } from './auth.service';
+import { AuthRepository } from './auth.repository';
 import { LoginPayloadDto } from './dto/login-dto';
 import { SignUpPayloadDto } from './dto/sign-up-dto';
 import { TokenType } from './types/token-type.enum';
@@ -47,17 +47,18 @@ const mockJwtService: Partial<JwtService> = {
   signAsync: jest.fn(),
 };
 
-const mockPrismaService = {
-  user: {
-    findUnique: jest.fn(),
-    findUniqueOrThrow: jest.fn(),
-    create: jest.fn(),
-    update: jest.fn(),
-  },
-  userProvider: {
-    create: jest.fn(),
-    upsert: jest.fn(),
-  },
+const mockAuthRepository = {
+  findUserByEmail: jest.fn(),
+  findUserByEmailWithProviders: jest.fn(),
+  findUserById: jest.fn(),
+  findUserByIdWithProviders: jest.fn(),
+  findUserByIdOrThrow: jest.fn(),
+  createEmailUser: jest.fn(),
+  createOAuthUserAndProvider: jest.fn(),
+  upsertUserProvider: jest.fn(),
+  updateUser: jest.fn(),
+  updateLastLoginAt: jest.fn(),
+  updateEmailVerified: jest.fn(),
 };
 
 const mockRedisService = {
@@ -81,7 +82,7 @@ describe('AuthService', () => {
       providers: [
         AuthService,
         { provide: JwtService, useValue: mockJwtService },
-        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: AuthRepository, useValue: mockAuthRepository },
         { provide: RedisService, useValue: mockRedisService },
         { provide: MailerService, useValue: mockMailerService },
       ],
@@ -115,12 +116,12 @@ describe('AuthService', () => {
 
   describe('findUserByEmail', () => {
     it('returns user when found', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(baseUser);
+      mockAuthRepository.findUserByEmail.mockResolvedValue(baseUser);
       expect(await service.findUserByEmail(USER_EMAIL)).toBe(baseUser);
     });
 
     it('returns null when not found', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockAuthRepository.findUserByEmail.mockResolvedValue(null);
       expect(await service.findUserByEmail('unknown@example.com')).toBeNull();
     });
   });
@@ -129,12 +130,12 @@ describe('AuthService', () => {
 
   describe('findUserById', () => {
     it('returns user when found', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(baseUser);
+      mockAuthRepository.findUserById.mockResolvedValue(baseUser);
       expect(await service.findUserById(USER_ID)).toBe(baseUser);
     });
 
     it('returns null when not found', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockAuthRepository.findUserById.mockResolvedValue(null);
       expect(await service.findUserById('nonexistent-id')).toBeNull();
     });
   });
@@ -146,19 +147,17 @@ describe('AuthService', () => {
 
     it('creates new user, sends verification email, and returns sign-up response', async () => {
       const createdUser = { ...baseUser, providers: [] };
-      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockAuthRepository.findUserByEmailWithProviders.mockResolvedValue(null);
       mockedArgon2.hash.mockResolvedValue('hashed');
-      mockPrismaService.user.create.mockResolvedValue(createdUser);
+      mockAuthRepository.createEmailUser.mockResolvedValue(createdUser);
       (mockJwtService.signAsync as jest.Mock).mockResolvedValue('token');
       mockRedisService.setWithTTL.mockResolvedValue(undefined);
       mockMailerService.sendVerificationEmail.mockResolvedValue(undefined);
 
       const result = await service.signup(dto);
 
-      expect(mockPrismaService.user.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ email: USER_EMAIL, password: 'hashed' }),
-        }),
+      expect(mockAuthRepository.createEmailUser).toHaveBeenCalledWith(
+        expect.objectContaining({ email: USER_EMAIL, password: 'hashed' }),
       );
       expect(mockMailerService.sendVerificationEmail).toHaveBeenCalledWith(
         USER_EMAIL,
@@ -170,30 +169,25 @@ describe('AuthService', () => {
 
     it('throws ConflictException when email already exists with a password', async () => {
       const existingUser = { ...baseUser, password: 'existing-hash', providers: [] };
-      mockPrismaService.user.findUnique.mockResolvedValue(existingUser);
+      mockAuthRepository.findUserByEmailWithProviders.mockResolvedValue(existingUser);
 
       await expect(service.signup(dto)).rejects.toThrow(ConflictException);
-      expect(mockPrismaService.user.create).not.toHaveBeenCalled();
+      expect(mockAuthRepository.createEmailUser).not.toHaveBeenCalled();
     });
 
     it('merges OAuth-only account by adding a password when user exists with no password', async () => {
       const oauthUser = { ...baseUser, password: null, providers: [{ type: 'GOOGLE' }] };
       const updatedUser = { ...baseUser, password: 'hashed', providers: [{ type: 'GOOGLE' }] };
-      mockPrismaService.user.findUnique.mockResolvedValue(oauthUser);
+      mockAuthRepository.findUserByEmailWithProviders.mockResolvedValue(oauthUser);
       mockedArgon2.hash.mockResolvedValue('hashed');
-      mockPrismaService.user.update.mockResolvedValue(updatedUser);
+      mockAuthRepository.updateUser.mockResolvedValue(updatedUser);
       (mockJwtService.signAsync as jest.Mock).mockResolvedValue('token');
       mockRedisService.setWithTTL.mockResolvedValue(undefined);
 
       const result = await service.signup(dto);
 
-      expect(mockPrismaService.user.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: USER_ID },
-          data: { password: 'hashed' },
-        }),
-      );
-      expect(mockPrismaService.user.create).not.toHaveBeenCalled();
+      expect(mockAuthRepository.updateUser).toHaveBeenCalledWith(USER_ID, { password: 'hashed' });
+      expect(mockAuthRepository.createEmailUser).not.toHaveBeenCalled();
       expect(result).toBeDefined();
     });
   });
@@ -204,7 +198,7 @@ describe('AuthService', () => {
     const dto: LoginPayloadDto = { email: USER_EMAIL, password: 'Password1!' };
 
     it('returns login response with valid credentials', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(baseUser);
+      mockAuthRepository.findUserByEmail.mockResolvedValue(baseUser);
       mockedArgon2.verify.mockResolvedValue(true);
       (mockJwtService.signAsync as jest.Mock).mockResolvedValue('token');
       mockRedisService.setWithTTL.mockResolvedValue(undefined);
@@ -216,12 +210,12 @@ describe('AuthService', () => {
     });
 
     it('throws NotFoundException when user not found', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockAuthRepository.findUserByEmail.mockResolvedValue(null);
       await expect(service.login(dto)).rejects.toThrow(NotFoundException);
     });
 
     it('throws UnauthorizedException when password is invalid', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(baseUser);
+      mockAuthRepository.findUserByEmail.mockResolvedValue(baseUser);
       mockedArgon2.verify.mockResolvedValue(false);
       await expect(service.login(dto)).rejects.toThrow(UnauthorizedException);
     });
@@ -234,7 +228,7 @@ describe('AuthService', () => {
 
     it('returns new tokens when stored userId matches', async () => {
       mockRedisService.getAndDelete.mockResolvedValue(USER_ID);
-      mockPrismaService.user.findUnique.mockResolvedValue(baseUser);
+      mockAuthRepository.findUserById.mockResolvedValue(baseUser);
       (mockJwtService.signAsync as jest.Mock).mockResolvedValue('new-token');
       mockRedisService.setWithTTL.mockResolvedValue(undefined);
 
@@ -256,7 +250,7 @@ describe('AuthService', () => {
 
     it('throws TokenRevokedException when user no longer exists', async () => {
       mockRedisService.getAndDelete.mockResolvedValue(USER_ID);
-      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockAuthRepository.findUserById.mockResolvedValue(null);
       await expect(service.refreshTokens(USER_ID, rawToken)).rejects.toThrow(TokenRevokedException);
     });
   });
@@ -276,14 +270,11 @@ describe('AuthService', () => {
   describe('verifyEmail', () => {
     it('marks emailVerified=true when token is valid', async () => {
       mockRedisService.getAndDelete.mockResolvedValue(USER_ID);
-      mockPrismaService.user.update.mockResolvedValue(baseUser);
+      mockAuthRepository.updateEmailVerified.mockResolvedValue(baseUser);
 
       await service.verifyEmail('valid-token');
 
-      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
-        where: { id: USER_ID },
-        data: { emailVerified: true },
-      });
+      expect(mockAuthRepository.updateEmailVerified).toHaveBeenCalledWith(USER_ID);
     });
 
     it('throws UnauthorizedException when token is not found in Redis', async () => {
@@ -296,7 +287,7 @@ describe('AuthService', () => {
 
   describe('forgotPassword', () => {
     it('stores reset token and sends reset email for a valid user with password', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(baseUser);
+      mockAuthRepository.findUserByEmail.mockResolvedValue(baseUser);
       mockRedisService.setWithTTL.mockResolvedValue(undefined);
       mockMailerService.sendPasswordResetEmail.mockResolvedValue(undefined);
 
@@ -311,13 +302,13 @@ describe('AuthService', () => {
     });
 
     it('returns silently when user is not found', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockAuthRepository.findUserByEmail.mockResolvedValue(null);
       await expect(service.forgotPassword('unknown@example.com')).resolves.toBeUndefined();
       expect(mockMailerService.sendPasswordResetEmail).not.toHaveBeenCalled();
     });
 
     it('returns silently when user has no password (OAuth-only account)', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue({ ...baseUser, password: null });
+      mockAuthRepository.findUserByEmail.mockResolvedValue({ ...baseUser, password: null });
       await expect(service.forgotPassword(USER_EMAIL)).resolves.toBeUndefined();
       expect(mockMailerService.sendPasswordResetEmail).not.toHaveBeenCalled();
     });
@@ -352,16 +343,16 @@ describe('AuthService', () => {
   describe('resetPassword', () => {
     it('resets the password successfully', async () => {
       mockRedisService.getAndDelete.mockResolvedValue(USER_ID);
-      mockPrismaService.user.findUnique.mockResolvedValue(baseUser);
+      mockAuthRepository.findUserById.mockResolvedValue(baseUser);
       mockedArgon2.verify.mockResolvedValue(false);
       mockedArgon2.hash.mockResolvedValue('new-hashed');
-      mockPrismaService.user.update.mockResolvedValue(baseUser);
+      mockAuthRepository.updateUser.mockResolvedValue(baseUser);
 
       await expect(service.resetPassword('valid-token', 'NewPassword1!')).resolves.toBeUndefined();
 
-      expect(mockPrismaService.user.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: USER_ID }, data: { password: 'new-hashed' } }),
-      );
+      expect(mockAuthRepository.updateUser).toHaveBeenCalledWith(USER_ID, {
+        password: 'new-hashed',
+      });
     });
 
     it('throws UnauthorizedException (TOKEN_INVALID) when token is invalid', async () => {
@@ -379,7 +370,7 @@ describe('AuthService', () => {
 
     it('throws NotFoundException when user is not found', async () => {
       mockRedisService.getAndDelete.mockResolvedValue(USER_ID);
-      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockAuthRepository.findUserById.mockResolvedValue(null);
       await expect(service.resetPassword('valid-token', 'NewPassword1!')).rejects.toThrow(
         NotFoundException,
       );
@@ -387,7 +378,7 @@ describe('AuthService', () => {
 
     it('throws UnauthorizedException (NO_PASSWORD_ACCOUNT) when user has no password', async () => {
       mockRedisService.getAndDelete.mockResolvedValue(USER_ID);
-      mockPrismaService.user.findUnique.mockResolvedValue({ ...baseUser, password: null });
+      mockAuthRepository.findUserById.mockResolvedValue({ ...baseUser, password: null });
 
       const error = await service
         .resetPassword('valid-token', 'NewPassword1!')
@@ -401,7 +392,7 @@ describe('AuthService', () => {
 
     it('throws BadRequestException when new password is the same as the current password', async () => {
       mockRedisService.getAndDelete.mockResolvedValue(USER_ID);
-      mockPrismaService.user.findUnique.mockResolvedValue(baseUser);
+      mockAuthRepository.findUserById.mockResolvedValue(baseUser);
       mockedArgon2.verify.mockResolvedValue(true);
 
       await expect(service.resetPassword('valid-token', 'SamePassword1!')).rejects.toThrow(
@@ -414,19 +405,19 @@ describe('AuthService', () => {
 
   describe('changePassword', () => {
     it('changes password and stores change timestamp in Redis', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(baseUser);
+      mockAuthRepository.findUserById.mockResolvedValue(baseUser);
       mockedArgon2.verify.mockResolvedValue(true);
       mockedArgon2.hash.mockResolvedValue('new-hashed');
-      mockPrismaService.user.update.mockResolvedValue(baseUser);
+      mockAuthRepository.updateUser.mockResolvedValue(baseUser);
       mockRedisService.setWithTTL.mockResolvedValue(undefined);
 
       await expect(
         service.changePassword(USER_ID, 'OldPassword1!', 'NewPassword1!'),
       ).resolves.toBeUndefined();
 
-      expect(mockPrismaService.user.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { password: 'new-hashed' } }),
-      );
+      expect(mockAuthRepository.updateUser).toHaveBeenCalledWith(USER_ID, {
+        password: 'new-hashed',
+      });
       expect(mockRedisService.setWithTTL).toHaveBeenCalledWith(
         `pwd:change:${USER_ID}`,
         1_209_600,
@@ -438,18 +429,18 @@ describe('AuthService', () => {
       await expect(service.changePassword(USER_ID, 'same', 'same')).rejects.toThrow(
         BadRequestException,
       );
-      expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+      expect(mockAuthRepository.findUserById).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when user is not found', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockAuthRepository.findUserById.mockResolvedValue(null);
       await expect(service.changePassword(USER_ID, 'OldPass1!', 'NewPass1!')).rejects.toThrow(
         NotFoundException,
       );
     });
 
     it('throws UnauthorizedException (NO_PASSWORD_ACCOUNT) when user has no password', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue({ ...baseUser, password: null });
+      mockAuthRepository.findUserById.mockResolvedValue({ ...baseUser, password: null });
 
       const error = await service
         .changePassword(USER_ID, 'OldPass1!', 'NewPass1!')
@@ -462,7 +453,7 @@ describe('AuthService', () => {
     });
 
     it('throws UnauthorizedException when old password is incorrect', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(baseUser);
+      mockAuthRepository.findUserById.mockResolvedValue(baseUser);
       mockedArgon2.verify.mockResolvedValue(false);
       await expect(service.changePassword(USER_ID, 'WrongOld1!', 'NewPass1!')).rejects.toThrow(
         UnauthorizedException,
@@ -474,7 +465,7 @@ describe('AuthService', () => {
 
   describe('resendVerificationEmail', () => {
     it('sends verification email and returns correct attemptsLeft', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue({ ...baseUser, emailVerified: false });
+      mockAuthRepository.findUserById.mockResolvedValue({ ...baseUser, emailVerified: false });
       mockRedisService.incrementWithExpiry.mockResolvedValue(1);
       mockRedisService.setWithTTL.mockResolvedValue(undefined);
       mockMailerService.sendVerificationEmail.mockResolvedValue(undefined);
@@ -486,17 +477,17 @@ describe('AuthService', () => {
     });
 
     it('throws NotFoundException when user is not found', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockAuthRepository.findUserById.mockResolvedValue(null);
       await expect(service.resendVerificationEmail(USER_ID)).rejects.toThrow(NotFoundException);
     });
 
     it('throws ConflictException when email is already verified', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue({ ...baseUser, emailVerified: true });
+      mockAuthRepository.findUserById.mockResolvedValue({ ...baseUser, emailVerified: true });
       await expect(service.resendVerificationEmail(USER_ID)).rejects.toThrow(ConflictException);
     });
 
     it('throws 429 HttpException when resend count exceeds max attempts', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue({ ...baseUser, emailVerified: false });
+      mockAuthRepository.findUserById.mockResolvedValue({ ...baseUser, emailVerified: false });
       mockRedisService.incrementWithExpiry.mockResolvedValue(4);
 
       const error = await service.resendVerificationEmail(USER_ID).catch((e: unknown) => e);

@@ -1,7 +1,7 @@
-import { Public, ResponseMessage } from '@/decorators';
+import { Public, ResponseMessage } from '@/common/decorators';
 import { Controller, Get, Param, Query } from '@nestjs/common';
-import { CategoryService } from './category.service';
-import { GetCategoriesQueryDto } from './dto/get-categories-query.dto';
+import { CategoryService } from '../category.service';
+import { GetCategoriesQueryDto } from '../dto/get-categories-query.dto';
 
 @Controller('categories')
 export class CategoryController {

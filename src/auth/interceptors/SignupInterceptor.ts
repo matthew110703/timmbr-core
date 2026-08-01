@@ -3,7 +3,7 @@ import { Observable, map } from 'rxjs';
 import type { FastifyReply } from 'fastify';
 import { getCookieOptions } from '@/config/cookie.config';
 import { SignUpResponseDto } from '../dto/sign-up-dto';
-import { MessageResult } from '@/types/api-response.types';
+import { MessageResult } from '@/common/types/api-response.types';
 
 @Injectable()
 export class SignupInterceptor implements NestInterceptor {

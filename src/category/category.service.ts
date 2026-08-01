@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { GetCategoriesQueryDto } from './dto/get-categories-query.dto';
-import { PaginatedResult } from '@/types/api-response.types';
+import { PaginatedResult } from '@/common/types/api-response.types';
 import { CategoryResponseDto } from './dto/category-response.dto';
 import { CategoryTreeResponseDto } from './dto/category-tree-response.dto';
 import { Prisma } from '@prisma/client';
@@ -11,7 +11,7 @@ import {
   CategoryNotFoundException,
   CategorySelfReferentialException,
 } from '@/common/exceptions/category.exception';
-import { generateSlug } from '@/utils/helpers';
+import { generateSlug } from '@/common/utils/helpers';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CategoryRepository } from './category.repository';
 

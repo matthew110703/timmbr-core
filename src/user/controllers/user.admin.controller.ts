@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import { Roles, ResponseMessage } from '@/decorators';
+import { Roles, ResponseMessage } from '@/common/decorators';
 import { UserAdminService } from '../services/user.admin.service';
 import { GetAdminUsersQueryDto } from '../dto/get-admin-users-query.dto';
 import { CreateAdminUserDto } from '../dto/create-admin-user.dto';

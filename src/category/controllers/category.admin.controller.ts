@@ -1,10 +1,10 @@
-import { ResponseMessage, Roles } from '@/decorators';
+import { ResponseMessage, Roles } from '@/common/decorators';
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import { CategoryService } from './category.service';
-import { GetCategoriesQueryDto } from './dto/get-categories-query.dto';
-import { CreateCategoryDto } from './dto/create-category.dto';
-import { UpdateCategoryDto } from './dto/update-category.dto';
+import { CategoryService } from '../category.service';
+import { GetCategoriesQueryDto } from '../dto/get-categories-query.dto';
+import { CreateCategoryDto } from '../dto/create-category.dto';
+import { UpdateCategoryDto } from '../dto/update-category.dto';
 
 @Controller('admin/categories')
 @Roles(UserRole.ADMIN, UserRole.MASTER)

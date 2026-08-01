@@ -1,4 +1,4 @@
-import { ResponseMessage } from '@/decorators';
+import { ResponseMessage } from '@/common/decorators';
 import { Body, Controller, Get, HttpCode, Put, Req } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import { JwtPayload } from '@/auth/types/jwt.types';

@@ -1,4 +1,4 @@
-import { User, UserProvider } from '@/types/user';
+import { User, UserProvider } from '@/common/types/user';
 import { AdminCreateUserResponseDto, AdminUserResponseDto } from '../dto/admin-user-response.dto';
 
 export class AdminUserMapper {

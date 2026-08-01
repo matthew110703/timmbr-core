@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CategoryStatus } from '@prisma/client';
 import { CategoryAdminController } from './category.admin.controller';
-import { CategoryService } from './category.service';
-import { CreateCategoryDto } from './dto/create-category.dto';
-import { UpdateCategoryDto } from './dto/update-category.dto';
-import { GetCategoriesQueryDto } from './dto/get-categories-query.dto';
+import { CategoryService } from '../category.service';
+import { CreateCategoryDto } from '../dto/create-category.dto';
+import { UpdateCategoryDto } from '../dto/update-category.dto';
+import { GetCategoriesQueryDto } from '../dto/get-categories-query.dto';
 
 const mockCategoryService = {
   getAllCategories: jest.fn(),

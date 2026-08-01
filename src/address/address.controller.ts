@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import { JwtPayload } from '@/auth/types/jwt.types';
-import { ResponseMessage } from '@/decorators';
+import { ResponseMessage } from '@/common/decorators';
 import { AddressService } from './address.service';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';

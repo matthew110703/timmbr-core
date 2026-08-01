@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
 import { Reflector } from '@nestjs/core';
 import { UserRole } from '@prisma/client';
 import type { FastifyRequest } from 'fastify';
-import { ROLES_KEY } from '@/decorators/roles.decorator';
+import { ROLES_KEY } from '@/common/decorators/roles.decorator';
 import { JwtPayload } from '@/auth/types/jwt.types';
 
 @Injectable()

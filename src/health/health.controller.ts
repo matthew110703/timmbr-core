@@ -1,8 +1,7 @@
 import { Controller, Get, VERSION_NEUTRAL } from '@nestjs/common';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
 import { PrismaHealthIndicator } from './indicators/prisma.health';
-import { SkipTransform } from '../decorators/skip-transform.decorator';
-import { Public } from '@/decorators';
+import { SkipTransform, Public } from '@/common/decorators';
 
 @SkipTransform()
 @Public()

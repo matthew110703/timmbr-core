@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CategoryStatus } from '@prisma/client';
 import { CategoryController } from './category.controller';
-import { CategoryService } from './category.service';
-import { GetCategoriesQueryDto } from './dto/get-categories-query.dto';
+import { CategoryService } from '../category.service';
+import { GetCategoriesQueryDto } from '../dto/get-categories-query.dto';
 
 const mockCategoryService = {
   getAllCategories: jest.fn(),

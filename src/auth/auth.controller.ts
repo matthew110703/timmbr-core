@@ -1,4 +1,4 @@
-import { Public, ResponseMessage } from '@/decorators';
+import { Public, ResponseMessage } from '@/common/decorators';
 import {
   Body,
   Controller,

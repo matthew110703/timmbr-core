@@ -1,5 +1,5 @@
-import { MessageResult } from '@/types/api-response.types';
-import { User } from '@/types/user';
+import { MessageResult } from '@/common/types/api-response.types';
+import { User } from '@/common/types/user';
 import { SignUpResponseDto, UserShortDto } from './dto/sign-up-dto';
 import { LoginResponseDto } from './dto/login-dto';
 

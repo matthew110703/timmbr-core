@@ -1,4 +1,4 @@
-import { User, UserProvider } from '@/types/user';
+import { User, UserProvider } from '@/common/types/user';
 import { UserProfileDto } from '../dto/user-profile.dto';
 
 export class UserMapper {

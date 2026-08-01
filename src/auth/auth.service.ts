@@ -1,8 +1,7 @@
 import { env } from '@/config/env';
-import { PrismaService } from '@/prisma/prisma.service';
 import { RedisService } from '@/redis/redis.service';
 import { MailerService } from '@/mailer/mailer.service';
-import { User, UserProvider } from '@/types/user';
+import { User, UserProvider } from '@/common/types/user';
 import {
   BadRequestException,
   ConflictException,
@@ -27,12 +26,13 @@ import { LoginPayloadDto } from './dto/login-dto';
 import { TokenRevokedException } from '@/common/exceptions/token.exception';
 import { UserDeactivatedException } from '@/common/exceptions/user.exception';
 import { TokenType } from './types/token-type.enum';
+import { AuthRepository } from './auth.repository';
 
 @Injectable()
 export class AuthService {
   constructor(
     private jwt: JwtService,
-    private prisma: PrismaService,
+    private authRepository: AuthRepository,
     private redis: RedisService,
     private mailer: MailerService,
   ) {}
@@ -59,18 +59,15 @@ export class AuthService {
   }
 
   findUserByEmail(email: string) {
-    return this.prisma.user.findUnique({ where: { email } });
+    return this.authRepository.findUserByEmail(email);
   }
 
   findUserById(userId: string) {
-    return this.prisma.user.findUnique({ where: { id: userId } });
+    return this.authRepository.findUserById(userId);
   }
 
   async signup(payload: SignUpPayloadDto) {
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email: payload.email },
-      include: { providers: true },
-    });
+    const existingUser = await this.authRepository.findUserByEmailWithProviders(payload.email);
 
     if (existingUser) {
       if (existingUser.password !== null) {
@@ -78,10 +75,8 @@ export class AuthService {
       }
       // OAuth-only account — merge by adding a password
       const hashedPassword = await argon2.hash(payload.password);
-      const updatedUser = await this.prisma.user.update({
-        where: { id: existingUser.id },
-        data: { password: hashedPassword },
-        include: { providers: true },
+      const updatedUser = await this.authRepository.updateUser(existingUser.id, {
+        password: hashedPassword,
       });
       const tokens = await this.generateJwtTokens(updatedUser);
       await this.storeRefreshToken(updatedUser.id, tokens.refreshToken);
@@ -90,13 +85,10 @@ export class AuthService {
 
     const hashedPassword = await argon2.hash(payload.password);
 
-    const user = await this.prisma.user.create({
-      data: {
-        name: payload.name,
-        email: payload.email,
-        password: hashedPassword,
-      },
-      include: { providers: true },
+    const user = await this.authRepository.createEmailUser({
+      name: payload.name,
+      email: payload.email,
+      password: hashedPassword,
     });
 
     const tokens = await this.generateJwtTokens(user);
@@ -115,37 +107,21 @@ export class AuthService {
     email: string,
     name: string,
   ): Promise<OAuthLoginResult> {
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email },
-      include: { providers: true },
-    });
+    const existingUser = await this.authRepository.findUserByEmailWithProviders(email);
 
     if (!existingUser) {
-      const created = await this.prisma.user.create({
-        data: { name, email, emailVerified: true },
-      });
-      await this.prisma.userProvider.create({
-        data: { userId: created.id, type, providerUid },
-      });
-      const finalUser = await this.prisma.user.findUniqueOrThrow({
-        where: { id: created.id },
-        include: { providers: true },
-      });
+      const finalUser = await this.authRepository.createOAuthUserAndProvider(
+        { name, email, emailVerified: true },
+        type,
+        providerUid,
+      );
       const tokens = await this.generateJwtTokens(finalUser);
       await this.storeRefreshToken(finalUser.id, tokens.refreshToken);
       return { user: finalUser, tokens };
     }
 
-    await this.prisma.userProvider.upsert({
-      where: { userId_type: { userId: existingUser.id, type } },
-      create: { userId: existingUser.id, type, providerUid },
-      update: { providerUid },
-    });
-    const finalUser = await this.prisma.user.update({
-      where: { id: existingUser.id },
-      data: { name },
-      include: { providers: true },
-    });
+    await this.authRepository.upsertUserProvider(existingUser.id, type, providerUid);
+    const finalUser = await this.authRepository.updateUser(existingUser.id, { name });
     const tokens = await this.generateJwtTokens(finalUser);
     await this.storeRefreshToken(finalUser.id, tokens.refreshToken);
     return { user: finalUser, tokens };
@@ -195,10 +171,7 @@ export class AuthService {
   }
 
   async updateLastLoginAt(userId: string) {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { lastLoginAt: new Date() },
-    });
+    await this.authRepository.updateLastLoginAt(userId);
   }
 
   async verifyEmail(token: string): Promise<void> {
@@ -206,10 +179,7 @@ export class AuthService {
     if (!userId) {
       throw new UnauthorizedException('Invalid or expired verification token.');
     }
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { emailVerified: true },
-    });
+    await this.authRepository.updateEmailVerified(userId);
   }
 
   async forgotPassword(email: string): Promise<void> {
@@ -265,10 +235,7 @@ export class AuthService {
     }
 
     const hashedPassword = await argon2.hash(newPassword);
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { password: hashedPassword },
-    });
+    await this.authRepository.updateUser(userId, { password: hashedPassword });
   }
 
   async changePassword(userId: string, oldPassword: string, newPassword: string): Promise<void> {
@@ -294,10 +261,7 @@ export class AuthService {
     }
 
     const hashedPassword = await argon2.hash(newPassword);
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { password: hashedPassword },
-    });
+    await this.authRepository.updateUser(userId, { password: hashedPassword });
 
     await this.redis.setWithTTL(`pwd:change:${userId}`, 1_209_600, new Date().toISOString());
   }
