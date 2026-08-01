@@ -13,20 +13,20 @@ export class CategoryController {
   @Public()
   @ResponseMessage('Categories fetched successfully.')
   getAll(@Query() query: GetCategoriesQueryDto) {
-    return this.service.getAllCategories(query);
+    return this.service.getAllCategories(query, true);
   }
 
   @Get(CATEGORY_ROUTES.TREE)
   @Public()
   @ResponseMessage('Category tree fetched successfully.')
   getTree(@Param('parentId') parentId?: string) {
-    return this.service.getCategoryTree(parentId);
+    return this.service.getCategoryTree(parentId, true);
   }
 
   @Get(CATEGORY_ROUTES.BY_ID)
   @Public()
   @ResponseMessage('Category fetched successfully.')
   getCategoryById(@Param('catId') catId: string) {
-    return this.service.getCategoryById(catId);
+    return this.service.getCategoryById(catId, true);
   }
 }

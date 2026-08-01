@@ -1,13 +1,14 @@
 import { Injectable } from '@nestjs/common';
+import { CategoryStatus, Prisma } from '@prisma/client';
 import { GetCategoriesQueryDto } from './dto/get-categories-query.dto';
 import { PaginatedResult } from '@/common/types/api-response.types';
 import { CategoryResponseDto } from './dto/category-response.dto';
 import { CategoryTreeResponseDto } from './dto/category-tree-response.dto';
-import { Prisma } from '@prisma/client';
 import { CategoryMapper } from './category.mapper';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import {
   CategoryAlreadyExistsException,
+  CategoryHasChildrenException,
   CategoryNotFoundException,
   CategorySelfReferentialException,
 } from '@/common/exceptions/category.exception';
@@ -19,11 +20,18 @@ import { CategoryRepository } from './category.repository';
 export class CategoryService {
   constructor(private readonly categoryRepository: CategoryRepository) {}
 
-  async getCategoryTree(rootParentId?: string): Promise<CategoryTreeResponseDto[]> {
+  async getCategoryTree(
+    rootParentId?: string,
+    onlyActive = false,
+  ): Promise<CategoryTreeResponseDto[]> {
     if (rootParentId) {
       const parentCategory = await this.categoryRepository.findById(rootParentId);
 
       if (!parentCategory) {
+        throw new CategoryNotFoundException();
+      }
+
+      if (onlyActive && parentCategory.status !== CategoryStatus.ACTIVE) {
         throw new CategoryNotFoundException();
       }
     }
@@ -32,7 +40,10 @@ export class CategoryService {
 
     const buildTree = (parentId: string | null): CategoryTreeResponseDto[] => {
       return allCategories
-        .filter((cat) => cat.parentId === parentId)
+        .filter(
+          (cat) =>
+            cat.parentId === parentId && (!onlyActive || cat.status === CategoryStatus.ACTIVE),
+        )
         .map((cat) => ({
           ...CategoryMapper.toResponse(cat),
           children: buildTree(cat.id),
@@ -109,12 +120,15 @@ export class CategoryService {
 
   async getAllCategories(
     query: GetCategoriesQueryDto,
+    onlyActive = false,
   ): Promise<PaginatedResult<CategoryResponseDto>> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
 
     const where: Prisma.CategoryWhereInput = {
-      ...(query.status && { status: query.status }),
+      ...(onlyActive
+        ? { status: CategoryStatus.ACTIVE }
+        : query.status && { status: query.status }),
       ...(query.parentId && { parentId: query.parentId }),
     };
 
@@ -135,25 +149,38 @@ export class CategoryService {
     };
   }
 
-  async getCategoryById(catId: string): Promise<CategoryResponseDto> {
+  async getCategoryById(catId: string, onlyActive = false): Promise<CategoryResponseDto> {
     const category = await this.categoryRepository.findByIdWithParent(catId);
 
     if (!category) {
       throw new CategoryNotFoundException();
     }
 
+    if (onlyActive && category.status !== CategoryStatus.ACTIVE) {
+      throw new CategoryNotFoundException();
+    }
+
     return CategoryMapper.toResponseWithParent(category, category.parent);
   }
 
-  async delete(catId: string): Promise<CategoryResponseDto> {
+  async delete(catId: string, force = false): Promise<CategoryResponseDto> {
     const existingCategory = await this.categoryRepository.findById(catId);
 
     if (!existingCategory) {
       throw new CategoryNotFoundException();
     }
 
-    const category = await this.categoryRepository.delete(catId);
+    const childrenCount = await this.categoryRepository.countChildren(catId);
 
+    if (childrenCount > 0) {
+      if (!force) {
+        throw new CategoryHasChildrenException();
+      }
+      const deletedCategory = await this.categoryRepository.deleteTree(catId);
+      return CategoryMapper.toResponse(deletedCategory);
+    }
+
+    const category = await this.categoryRepository.delete(catId);
     return CategoryMapper.toResponse(category);
   }
 }

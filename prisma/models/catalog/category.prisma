@@ -1,6 +1,6 @@
 enum CategoryStatus {
   ACTIVE
-  HIDDEN
+  INACTIVE
   ARCHIVED
 }
 

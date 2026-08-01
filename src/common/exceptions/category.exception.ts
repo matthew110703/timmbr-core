@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 
 export class CategoryNotFoundException extends NotFoundException {
   constructor() {
@@ -20,6 +25,15 @@ export class CategorySelfReferentialException extends BadRequestException {
     super({
       message: 'Parent category cannot be the same as the category itself',
       code: 'CATEGORY_SELF_REFERENTIAL',
+    });
+  }
+}
+
+export class CategoryHasChildrenException extends UnprocessableEntityException {
+  constructor() {
+    super({
+      message: 'Cannot delete category because it has sub-categories. Pass force=true to delete.',
+      code: 'CATEGORY_HAS_CHILDREN',
     });
   }
 }

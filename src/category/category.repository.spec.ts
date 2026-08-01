@@ -35,6 +35,7 @@ const mockPrismaService = {
     create: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
+    deleteMany: jest.fn(),
   },
   $transaction: jest.fn(),
 };
@@ -125,6 +126,19 @@ describe('CategoryRepository', () => {
     });
   });
 
+  describe('countChildren', () => {
+    it('delegates to prisma.category.count for parentId', async () => {
+      mockPrismaService.category.count.mockResolvedValue(2);
+
+      const count = await repository.countChildren(CAT_ID_1);
+
+      expect(mockPrismaService.category.count).toHaveBeenCalledWith({
+        where: { parentId: CAT_ID_1 },
+      });
+      expect(count).toBe(2);
+    });
+  });
+
   describe('create', () => {
     it('delegates to prisma.category.create', async () => {
       const data = { name: 'Electronics', slug: 'electronics' };
@@ -161,6 +175,21 @@ describe('CategoryRepository', () => {
       expect(mockPrismaService.category.delete).toHaveBeenCalledWith({
         where: { id: CAT_ID_1 },
       });
+      expect(result).toBe(mockCategory);
+    });
+  });
+
+  describe('deleteTree', () => {
+    it('deletes descendant categories and target category in transaction', async () => {
+      mockPrismaService.category.findMany
+        .mockResolvedValueOnce([{ id: CAT_ID_2 }])
+        .mockResolvedValueOnce([]);
+      mockPrismaService.category.deleteMany.mockResolvedValue({ count: 1 });
+      mockPrismaService.category.delete.mockResolvedValue(mockCategory);
+
+      const result = await repository.deleteTree(CAT_ID_1);
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalled();
       expect(result).toBe(mockCategory);
     });
   });

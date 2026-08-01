@@ -43,7 +43,7 @@ describe('CategoryController', () => {
   });
 
   describe('getAll', () => {
-    it('delegates to service.getAllCategories', async () => {
+    it('delegates to service.getAllCategories with onlyActive=true', async () => {
       const query: GetCategoriesQueryDto = { page: 1, limit: 10 };
       const paginatedResult = {
         data: [mockCategoryResponse],
@@ -60,30 +60,30 @@ describe('CategoryController', () => {
 
       const result = await controller.getAll(query);
 
-      expect(mockCategoryService.getAllCategories).toHaveBeenCalledWith(query);
+      expect(mockCategoryService.getAllCategories).toHaveBeenCalledWith(query, true);
       expect(result).toBe(paginatedResult);
     });
   });
 
   describe('getTree', () => {
-    it('delegates to service.getCategoryTree with optional parentId', async () => {
+    it('delegates to service.getCategoryTree with optional parentId and onlyActive=true', async () => {
       const treeResult = [{ ...mockCategoryResponse, children: [] }];
       mockCategoryService.getCategoryTree.mockResolvedValue(treeResult);
 
       const result = await controller.getTree(CAT_ID_1);
 
-      expect(mockCategoryService.getCategoryTree).toHaveBeenCalledWith(CAT_ID_1);
+      expect(mockCategoryService.getCategoryTree).toHaveBeenCalledWith(CAT_ID_1, true);
       expect(result).toBe(treeResult);
     });
   });
 
   describe('getCategoryById', () => {
-    it('delegates to service.getCategoryById', async () => {
+    it('delegates to service.getCategoryById with onlyActive=true', async () => {
       mockCategoryService.getCategoryById.mockResolvedValue(mockCategoryResponse);
 
       const result = await controller.getCategoryById(CAT_ID_1);
 
-      expect(mockCategoryService.getCategoryById).toHaveBeenCalledWith(CAT_ID_1);
+      expect(mockCategoryService.getCategoryById).toHaveBeenCalledWith(CAT_ID_1, true);
       expect(result).toBe(mockCategoryResponse);
     });
   });

@@ -5,6 +5,7 @@ import { CategoryService } from '../category.service';
 import { CreateCategoryDto } from '../dto/create-category.dto';
 import { UpdateCategoryDto } from '../dto/update-category.dto';
 import { GetCategoriesQueryDto } from '../dto/get-categories-query.dto';
+import { DeleteCategoryQueryDto } from '../dto/delete-category-query.dto';
 
 const mockCategoryService = {
   getAllCategories: jest.fn(),
@@ -121,12 +122,13 @@ describe('CategoryAdminController', () => {
   });
 
   describe('delete', () => {
-    it('delegates to service.delete', async () => {
+    it('delegates to service.delete with force flag', async () => {
+      const query: DeleteCategoryQueryDto = { force: true };
       mockCategoryService.delete.mockResolvedValue(mockCategoryResponse);
 
-      const result = await controller.delete(CAT_ID_1);
+      const result = await controller.delete(CAT_ID_1, query);
 
-      expect(mockCategoryService.delete).toHaveBeenCalledWith(CAT_ID_1);
+      expect(mockCategoryService.delete).toHaveBeenCalledWith(CAT_ID_1, true);
       expect(result).toBe(mockCategoryResponse);
     });
   });

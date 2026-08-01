@@ -53,6 +53,12 @@ export class CategoryRepository {
     });
   }
 
+  async countChildren(parentId: string): Promise<number> {
+    return this.prisma.category.count({
+      where: { parentId },
+    });
+  }
+
   async create(
     data: Prisma.CategoryCreateInput | Prisma.CategoryUncheckedCreateInput,
   ): Promise<Category> {
@@ -74,6 +80,35 @@ export class CategoryRepository {
   async delete(id: string): Promise<Category> {
     return this.prisma.category.delete({
       where: { id },
+    });
+  }
+
+  private async getDescendantIds(parentId: string): Promise<string[]> {
+    const children = await this.prisma.category.findMany({
+      where: { parentId },
+      select: { id: true },
+    });
+
+    let descendantIds: string[] = [];
+    for (const child of children) {
+      const subDescendantIds = await this.getDescendantIds(child.id);
+      descendantIds = descendantIds.concat(subDescendantIds);
+      descendantIds.push(child.id);
+    }
+    return descendantIds;
+  }
+
+  async deleteTree(id: string): Promise<Category> {
+    const descendantIds = await this.getDescendantIds(id);
+    return this.prisma.$transaction(async (tx) => {
+      if (descendantIds.length > 0) {
+        await tx.category.deleteMany({
+          where: { id: { in: descendantIds } },
+        });
+      }
+      return tx.category.delete({
+        where: { id },
+      });
     });
   }
 }

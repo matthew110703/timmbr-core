@@ -97,15 +97,15 @@ describe('UserAdminService', () => {
 
   describe('update', () => {
     it('updates admin user status successfully', async () => {
-      const dto: UpdateAdminUserDto = { status: UserStatus.BLOCKED };
-      const updatedUser = { ...mockUser, status: UserStatus.BLOCKED };
+      const dto: UpdateAdminUserDto = { status: UserStatus.DELETED };
+      const updatedUser = { ...mockUser, status: UserStatus.DELETED };
       mockUserRepository.findById.mockResolvedValue(mockUser);
       mockUserRepository.update.mockResolvedValue(updatedUser);
 
       const result = await service.update(USER_ID, dto);
 
       expect(mockUserRepository.update).toHaveBeenCalledWith(USER_ID, dto);
-      expect(result.status).toBe(UserStatus.BLOCKED);
+      expect(result.status).toBe(UserStatus.DELETED);
     });
 
     it('throws UserNotFoundException if user does not exist', async () => {

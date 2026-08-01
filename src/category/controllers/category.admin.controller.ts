@@ -6,6 +6,7 @@ import { CategoryService } from '../category.service';
 import { GetCategoriesQueryDto } from '../dto/get-categories-query.dto';
 import { CreateCategoryDto } from '../dto/create-category.dto';
 import { UpdateCategoryDto } from '../dto/update-category.dto';
+import { DeleteCategoryQueryDto } from '../dto/delete-category-query.dto';
 import { CATEGORY_ROUTES } from '../category.routes';
 
 @Controller(`${APP_ROUTES.PREFIX.ADMIN}/${APP_ROUTES.CATEGORIES}`)
@@ -51,7 +52,7 @@ export class CategoryAdminController {
   @HttpCode(200)
   @Roles(UserRole.MASTER, UserRole.ADMIN)
   @ResponseMessage('Category deleted successfully')
-  delete(@Param('catId') catId: string) {
-    return this.service.delete(catId);
+  delete(@Param('catId') catId: string, @Query() query: DeleteCategoryQueryDto) {
+    return this.service.delete(catId, query.force);
   }
 }

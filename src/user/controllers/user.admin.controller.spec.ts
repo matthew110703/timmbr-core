@@ -83,7 +83,7 @@ describe('UserAdminController', () => {
 
   describe('update', () => {
     it('delegates to service.update', async () => {
-      const dto: UpdateAdminUserDto = { status: UserStatus.BLOCKED };
+      const dto: UpdateAdminUserDto = { status: UserStatus.DELETED };
       mockUserAdminService.update.mockResolvedValue(mockAdminUserResponse);
 
       const result = await controller.update(USER_ID, dto);
