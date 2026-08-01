@@ -1,3 +1,4 @@
+import { APP_ROUTES } from '@/app.routes';
 import { Public, ResponseMessage } from '@/common/decorators';
 import {
   Body,
@@ -29,19 +30,20 @@ import { JwtPayload } from './types/jwt.types';
 import { env } from '@/config/env';
 import { OAuthLoginResult } from './auth.service';
 import passport from 'passport';
+import { AUTH_ROUTES } from './auth.routes';
 
-@Controller('auth')
+@Controller(APP_ROUTES.AUTH)
 export class AuthController {
   constructor(private auth: AuthService) {}
 
-  @Post('signup')
+  @Post(AUTH_ROUTES.SIGNUP)
   @Public()
   @UseInterceptors(SignupInterceptor)
   create(@Body() dto: SignUpPayloadDto) {
     return this.auth.signup(dto);
   }
 
-  @Post('login')
+  @Post(AUTH_ROUTES.LOGIN)
   @Public()
   @HttpCode(200)
   @UseInterceptors(LoginInterceptor)
@@ -50,7 +52,7 @@ export class AuthController {
     return this.auth.login(dto);
   }
 
-  @Post('refresh')
+  @Post(AUTH_ROUTES.REFRESH)
   @Public()
   @UseGuards(RefreshTokenGuard)
   @HttpCode(200)
@@ -62,7 +64,7 @@ export class AuthController {
     return { accessToken: tokens.accessToken };
   }
 
-  @Post('logout')
+  @Post(AUTH_ROUTES.LOGOUT)
   @Public()
   @HttpCode(200)
   @ResponseMessage('Logged out successfully.')
@@ -72,7 +74,7 @@ export class AuthController {
     reply.clearCookie('refreshToken', { path: getCookieOptions().path });
   }
 
-  @Get('verify-email')
+  @Get(AUTH_ROUTES.VERIFY_EMAIL)
   @Public()
   @HttpCode(200)
   @ResponseMessage('Email verified successfully.')
@@ -80,7 +82,7 @@ export class AuthController {
     await this.auth.verifyEmail(token);
   }
 
-  @Post('resend-verification')
+  @Post(AUTH_ROUTES.RESEND_VERIFICATION)
   @HttpCode(200)
   @ResponseMessage('Verification email resent successfully.')
   async resendVerification(@Req() req: FastifyRequest) {
@@ -88,7 +90,7 @@ export class AuthController {
     return this.auth.resendVerificationEmail(user.sub);
   }
 
-  @Post('forgot-password')
+  @Post(AUTH_ROUTES.FORGOT_PASSWORD)
   @Public()
   @HttpCode(200)
   @ResponseMessage("If this email is registered, you'll receive a reset link shortly.")
@@ -96,7 +98,7 @@ export class AuthController {
     await this.auth.forgotPassword(dto.email);
   }
 
-  @Get('validate-token')
+  @Get(AUTH_ROUTES.VALIDATE_TOKEN)
   @Public()
   @HttpCode(200)
   @ResponseMessage('Token is valid.')
@@ -104,7 +106,7 @@ export class AuthController {
     await this.auth.validateToken(dto.token, dto.type);
   }
 
-  @Post('reset-password')
+  @Post(AUTH_ROUTES.RESET_PASSWORD)
   @Public()
   @HttpCode(200)
   @ResponseMessage('Password reset successfully.')
@@ -112,7 +114,7 @@ export class AuthController {
     await this.auth.resetPassword(dto.token, dto.newPassword);
   }
 
-  @Post('change-password')
+  @Post(AUTH_ROUTES.CHANGE_PASSWORD)
   @HttpCode(200)
   @ResponseMessage('Password changed successfully.')
   async changePassword(@Req() req: FastifyRequest, @Body() dto: ChangePasswordDto) {
@@ -120,7 +122,7 @@ export class AuthController {
     await this.auth.changePassword(user.sub, dto.oldPassword, dto.newPassword);
   }
 
-  @Get('google')
+  @Get(AUTH_ROUTES.GOOGLE)
   @Public()
   googleAuth(@Req() req: FastifyRequest, @Res() reply: FastifyReply) {
     // hijack() tells Fastify to not touch the reply after the handler returns.
@@ -134,7 +136,7 @@ export class AuthController {
     handler(req.raw, reply.raw, () => {});
   }
 
-  @Get('google/callback')
+  @Get(AUTH_ROUTES.GOOGLE_CALLBACK)
   @Public()
   async googleCallback(@Req() req: FastifyRequest, @Res() reply: FastifyReply) {
     const result = await new Promise<OAuthLoginResult>((resolve, reject) => {

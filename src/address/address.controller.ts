@@ -1,3 +1,4 @@
+import { APP_ROUTES } from '@/app.routes';
 import {
   Body,
   Controller,
@@ -16,8 +17,9 @@ import { ResponseMessage } from '@/common/decorators';
 import { AddressService } from './address.service';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
+import { ADDRESS_ROUTES } from './address.routes';
 
-@Controller('addresses')
+@Controller(APP_ROUTES.ADDRESSES)
 export class AddressController {
   constructor(private address: AddressService) {}
 
@@ -36,14 +38,14 @@ export class AddressController {
     return this.address.create(user.sub, dto);
   }
 
-  @Get(':addressId')
+  @Get(ADDRESS_ROUTES.BY_ID)
   @ResponseMessage('Address fetched successfully.')
   getOne(@Req() req: FastifyRequest, @Param('addressId') addressId: string) {
     const user = req.user as unknown as JwtPayload;
     return this.address.getOne(user.sub, addressId);
   }
 
-  @Put(':addressId')
+  @Put(ADDRESS_ROUTES.BY_ID)
   @HttpCode(200)
   @ResponseMessage('Address updated successfully.')
   update(
@@ -55,14 +57,14 @@ export class AddressController {
     return this.address.update(user.sub, addressId, dto);
   }
 
-  @Delete(':addressId')
+  @Delete(ADDRESS_ROUTES.BY_ID)
   @ResponseMessage('Address deleted successfully.')
   remove(@Req() req: FastifyRequest, @Param('addressId') addressId: string) {
     const user = req.user as unknown as JwtPayload;
     return this.address.remove(user.sub, addressId);
   }
 
-  @Patch(':addressId/default')
+  @Patch(ADDRESS_ROUTES.SET_DEFAULT)
   @HttpCode(200)
   @ResponseMessage('Default address updated successfully.')
   setDefault(@Req() req: FastifyRequest, @Param('addressId') addressId: string) {

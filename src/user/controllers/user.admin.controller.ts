@@ -1,3 +1,4 @@
+import { APP_ROUTES } from '@/app.routes';
 import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles, ResponseMessage } from '@/common/decorators';
@@ -5,8 +6,9 @@ import { UserAdminService } from '../services/user.admin.service';
 import { GetAdminUsersQueryDto } from '../dto/get-admin-users-query.dto';
 import { CreateAdminUserDto } from '../dto/create-admin-user.dto';
 import { UpdateAdminUserDto } from '../dto/update-admin-user.dto';
+import { USER_ROUTES } from '../user.routes';
 
-@Controller('admin/users')
+@Controller(`${APP_ROUTES.PREFIX.ADMIN}/${APP_ROUTES.USERS}`)
 @Roles(UserRole.ADMIN, UserRole.MASTER)
 export class UserAdminController {
   constructor(private readonly adminUser: UserAdminService) {}
@@ -17,13 +19,13 @@ export class UserAdminController {
     return this.adminUser.getAll(query);
   }
 
-  @Get(':userId')
+  @Get(USER_ROUTES.BY_ID)
   @ResponseMessage('User fetched successfully.')
   getOne(@Param('userId') userId: string) {
     return this.adminUser.getOne(userId);
   }
 
-  @Patch(':userId')
+  @Patch(USER_ROUTES.BY_ID)
   @HttpCode(200)
   @ResponseMessage('User updated successfully.')
   update(@Param('userId') userId: string, @Body() dto: UpdateAdminUserDto) {

@@ -1,3 +1,4 @@
+import { APP_ROUTES } from '@/app.routes';
 import { ResponseMessage, Roles } from '@/common/decorators';
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
@@ -5,8 +6,9 @@ import { CategoryService } from '../category.service';
 import { GetCategoriesQueryDto } from '../dto/get-categories-query.dto';
 import { CreateCategoryDto } from '../dto/create-category.dto';
 import { UpdateCategoryDto } from '../dto/update-category.dto';
+import { CATEGORY_ROUTES } from '../category.routes';
 
-@Controller('admin/categories')
+@Controller(`${APP_ROUTES.PREFIX.ADMIN}/${APP_ROUTES.CATEGORIES}`)
 @Roles(UserRole.ADMIN, UserRole.MASTER)
 export class CategoryAdminController {
   constructor(private service: CategoryService) {}
@@ -17,19 +19,19 @@ export class CategoryAdminController {
     return this.service.getAllCategories(query);
   }
 
-  @Get('tree/:parentId')
+  @Get(CATEGORY_ROUTES.TREE)
   @ResponseMessage('Category tree fetched successfully.')
   getTree(@Param('parentId') parentId?: string) {
     return this.service.getCategoryTree(parentId);
   }
 
-  @Get(':catId')
+  @Get(CATEGORY_ROUTES.BY_ID)
   @ResponseMessage('Category fetched successfully')
   getCategoryById(@Param('catId') catId: string) {
     return this.service.getCategoryById(catId);
   }
 
-  @Patch(':catId')
+  @Patch(CATEGORY_ROUTES.BY_ID)
   @HttpCode(200)
   @Roles(UserRole.MASTER, UserRole.ADMIN)
   @ResponseMessage('Category updated successfully')
@@ -45,7 +47,7 @@ export class CategoryAdminController {
     return this.service.create(dto);
   }
 
-  @Delete(':catId')
+  @Delete(CATEGORY_ROUTES.BY_ID)
   @HttpCode(200)
   @Roles(UserRole.MASTER, UserRole.ADMIN)
   @ResponseMessage('Category deleted successfully')
