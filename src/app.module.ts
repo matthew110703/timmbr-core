@@ -19,6 +19,7 @@ import { UserModule } from './user/user.module';
 import { AddressModule } from './address/address.module';
 import { AdminModule } from './admin/admin.module';
 import { CategoryModule } from './category/category.module';
+import { BrandModule } from './brand/brand.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { CategoryModule } from './category/category.module';
     AddressModule,
     AdminModule,
     CategoryModule,
+    BrandModule,
   ],
   controllers: [AppController],
   providers: [
