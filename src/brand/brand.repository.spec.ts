@@ -33,8 +33,10 @@ describe('BrandRepository', () => {
   let repository: BrandRepository;
 
   beforeEach(async () => {
-    mockPrismaService.$transaction.mockImplementation(
-      (fn: (tx: typeof mockPrismaService) => unknown) => fn(mockPrismaService),
+    mockPrismaService.$transaction.mockImplementation((arg: unknown) =>
+      Array.isArray(arg)
+        ? Promise.all(arg)
+        : (arg as (tx: typeof mockPrismaService) => unknown)(mockPrismaService),
     );
 
     const module: TestingModule = await Test.createTestingModule({

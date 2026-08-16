@@ -23,16 +23,15 @@ export class BrandRepository {
     page: number,
     limit: number,
   ): Promise<[Brand[], number]> {
-    return this.prisma.$transaction(async (tx) => {
-      const brands = await tx.brand.findMany({
+    return this.prisma.$transaction([
+      this.prisma.brand.findMany({
         where,
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { createdAt: 'desc' },
-      });
-      const total = await tx.brand.count({ where });
-      return [brands, total] as const;
-    });
+      }),
+      this.prisma.brand.count({ where }),
+    ]);
   }
 
   async create(data: Prisma.BrandCreateInput | Prisma.BrandUncheckedCreateInput): Promise<Brand> {

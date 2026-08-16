@@ -20,6 +20,7 @@ import { AddressModule } from './address/address.module';
 import { AdminModule } from './admin/admin.module';
 import { CategoryModule } from './category/category.module';
 import { BrandModule } from './brand/brand.module';
+import { ProductModule } from './product/product.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { BrandModule } from './brand/brand.module';
     AdminModule,
     CategoryModule,
     BrandModule,
+    ProductModule,
   ],
   controllers: [AppController],
   providers: [
