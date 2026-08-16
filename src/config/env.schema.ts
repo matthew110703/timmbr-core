@@ -25,6 +25,12 @@ export const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string(),
   GOOGLE_CLIENT_SECRET: z.string(),
   GOOGLE_CALLBACK_URL: z.string(),
+  STORAGE_ENDPOINT: z.string().optional(),
+  STORAGE_REGION: z.string().default('auto'),
+  STORAGE_ACCESS_KEY_ID: z.string().optional(),
+  STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
+  STORAGE_BUCKET: z.string().optional(),
+  STORAGE_PUBLIC_URL: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

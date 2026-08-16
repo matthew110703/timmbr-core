@@ -21,6 +21,7 @@ import { AdminModule } from './admin/admin.module';
 import { CategoryModule } from './category/category.module';
 import { BrandModule } from './brand/brand.module';
 import { ProductModule } from './product/product.module';
+import { MediaModule } from './media/media.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { ProductModule } from './product/product.module';
     CategoryModule,
     BrandModule,
     ProductModule,
+    MediaModule,
   ],
   controllers: [AppController],
   providers: [

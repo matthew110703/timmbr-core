@@ -14,5 +14,6 @@ export const APP_ROUTES = {
   WISHLIST: 'wishlist',
   ORDERS: 'orders',
   ADDRESSES: 'addresses',
+  MEDIA: 'media',
   HEALTH: 'health',
 } as const;
