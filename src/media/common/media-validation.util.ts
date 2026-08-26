@@ -3,41 +3,44 @@ import {
   MediaFileTooLargeException,
   MediaUnsupportedTypeException,
 } from '@/common/exceptions/media.exception';
-import { UploadedFile } from '../interfaces/uploaded-file.interface';
+import { ALLOWED_MIME_TYPES, MEDIA_CONSTANTS } from './media.constants';
 
-export const ALLOWED_MIME_TYPES: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/avif': 'avif',
-  'video/mp4': 'mp4',
-  'video/webm': 'webm',
-};
+export { ALLOWED_MIME_TYPES, MEDIA_CONSTANTS };
 
-export const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
-export const MAX_VIDEO_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
+export interface ValidateMediaItemParams {
+  mimeType: string;
+  sizeBytes?: number;
+}
 
-export function validateMediaFile(file: UploadedFile): void {
-  if (!file || !file.buffer || file.buffer.length === 0) {
+export function validateMediaItem(item: ValidateMediaItemParams): void {
+  if (!item.mimeType || item.mimeType.trim() === '') {
     throw new MediaEmptyFileException();
   }
 
-  const normalizedMime = file.mimetype.toLowerCase();
+  const normalizedMime = item.mimeType.toLowerCase().trim();
   if (!ALLOWED_MIME_TYPES[normalizedMime]) {
-    throw new MediaUnsupportedTypeException(file.mimetype);
+    throw new MediaUnsupportedTypeException(item.mimeType);
   }
 
-  const isVideo = normalizedMime.startsWith('video/');
-  const maxBytes = isVideo ? MAX_VIDEO_SIZE_BYTES : MAX_IMAGE_SIZE_BYTES;
-  const maxMb = isVideo ? 50 : 10;
+  if (item.sizeBytes !== undefined && item.sizeBytes !== null) {
+    if (item.sizeBytes <= 0) {
+      throw new MediaEmptyFileException();
+    }
 
-  if (file.size > maxBytes || file.buffer.length > maxBytes) {
-    throw new MediaFileTooLargeException(maxMb);
+    const isVideo = normalizedMime.startsWith('video/');
+    const maxBytes = isVideo
+      ? MEDIA_CONSTANTS.MAX_VIDEO_SIZE_BYTES
+      : MEDIA_CONSTANTS.MAX_IMAGE_SIZE_BYTES;
+    const maxMb = isVideo ? MEDIA_CONSTANTS.MAX_VIDEO_SIZE_MB : MEDIA_CONSTANTS.MAX_IMAGE_SIZE_MB;
+
+    if (item.sizeBytes > maxBytes) {
+      throw new MediaFileTooLargeException(maxMb);
+    }
   }
 }
 
 export function getExtensionForMime(mimetype: string, originalname?: string): string {
-  const normalizedMime = mimetype.toLowerCase();
+  const normalizedMime = mimetype.toLowerCase().trim();
   if (ALLOWED_MIME_TYPES[normalizedMime]) {
     return ALLOWED_MIME_TYPES[normalizedMime];
   }

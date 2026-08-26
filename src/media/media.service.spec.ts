@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MediaService } from './media.service';
 import { STORAGE_PROVIDER } from './interfaces/storage-provider.interface';
-import { UploadedFile } from './interfaces/uploaded-file.interface';
 import {
   MediaEmptyFileException,
   MediaFileTooLargeException,
@@ -12,7 +11,7 @@ describe('MediaService', () => {
   let service: MediaService;
 
   const mockStorageProvider = {
-    upload: jest.fn(),
+    getPresignedUploadUrl: jest.fn(),
     delete: jest.fn(),
     getPublicUrl: jest.fn(),
   };
@@ -37,107 +36,136 @@ describe('MediaService', () => {
     expect(service).toBeDefined();
   });
 
-  describe('upload', () => {
-    const validImageFile: UploadedFile = {
-      buffer: Buffer.from('fake-image-data'),
-      mimetype: 'image/webp',
-      size: 15,
-      originalname: 'sample.webp',
-    };
-
-    it('successfully uploads valid file with folder prefix and returns key and url', async () => {
-      mockStorageProvider.upload.mockImplementation((_, options: { key?: string }) =>
+  describe('getPresignedUploadUrls', () => {
+    it('successfully generates presigned URL for a single file with folder prefix', async () => {
+      mockStorageProvider.getPresignedUploadUrl.mockImplementation((options: { key: string }) =>
         Promise.resolve({
-          key: options.key ?? 'test.webp',
+          uploadUrl: `https://signed.example.com/${options.key}`,
+          key: options.key,
+          expiresIn: 300,
         }),
       );
       mockStorageProvider.getPublicUrl.mockImplementation(
         (key: string) => `https://cdn.timmbr.com/${key}`,
       );
 
-      const result = await service.upload(validImageFile, {
+      const result = await service.getPresignedUploadUrls({
         folder: 'products/123',
+        files: [
+          {
+            fileName: 'sample.webp',
+            mimeType: 'image/webp',
+            sizeBytes: 1024,
+          },
+        ],
       });
 
-      const [uploadBuffer, uploadOptions] = mockStorageProvider.upload.mock.calls[0] as [
-        Buffer,
-        { folder?: string; contentType?: string; key?: string },
-      ];
-
-      expect(uploadBuffer).toBe(validImageFile.buffer);
-      expect(uploadOptions.folder).toBe('products/123');
-      expect(uploadOptions.contentType).toBe('image/webp');
-      expect(uploadOptions.key).toMatch(/^products\/123\/[0-9a-f-]+\.webp$/);
-      expect(result.key).toMatch(/^products\/123\/[0-9a-f-]+\.webp$/);
-      expect(result.url).toBe(`https://cdn.timmbr.com/${result.key}`);
+      expect(result.files).toHaveLength(1);
+      const file = result.files[0];
+      expect(file.fileName).toBe('sample.webp');
+      expect(file.key).toMatch(/^products\/123\/[0-9a-f-]+\.webp$/);
+      expect(file.uploadUrl).toBe(`https://signed.example.com/${file.key}`);
+      expect(file.publicUrl).toBe(`https://cdn.timmbr.com/${file.key}`);
+      expect(file.expiresIn).toBe(300);
     });
 
-    it('generates key at root when folder is not provided', async () => {
-      mockStorageProvider.upload.mockImplementation((_, options: { key?: string }) =>
+    it('generates presigned URLs for batch/multi-upload files without folder prefix', async () => {
+      mockStorageProvider.getPresignedUploadUrl.mockImplementation((options: { key: string }) =>
         Promise.resolve({
-          key: options.key ?? 'test.webp',
+          uploadUrl: `https://signed.example.com/${options.key}`,
+          key: options.key,
+          expiresIn: 300,
         }),
       );
       mockStorageProvider.getPublicUrl.mockImplementation(
         (key: string) => `https://cdn.timmbr.com/${key}`,
       );
 
-      const result = await service.upload(validImageFile);
+      const result = await service.getPresignedUploadUrls({
+        files: [
+          { fileName: 'img1.png', mimeType: 'image/png' },
+          { fileName: 'video.mp4', mimeType: 'video/mp4', sizeBytes: 20 * 1024 * 1024 },
+        ],
+      });
 
-      expect(result.key).toMatch(/^[0-9a-f-]+\.webp$/);
-      expect(result.url).toBe(`https://cdn.timmbr.com/${result.key}`);
+      expect(result.files).toHaveLength(2);
+      expect(result.files[0].key).toMatch(/^[0-9a-f-]+\.png$/);
+      expect(result.files[1].key).toMatch(/^[0-9a-f-]+\.mp4$/);
     });
 
-    it('throws MediaEmptyFileException when file buffer is empty', async () => {
-      const emptyFile: UploadedFile = {
-        buffer: Buffer.alloc(0),
-        mimetype: 'image/jpeg',
-        size: 0,
-        originalname: 'empty.jpg',
-      };
-
-      await expect(service.upload(emptyFile)).rejects.toThrow(MediaEmptyFileException);
+    it('throws MediaEmptyFileException when mimeType is missing or empty', async () => {
+      await expect(
+        service.getPresignedUploadUrls({
+          files: [{ fileName: 'test.jpg', mimeType: '' }],
+        }),
+      ).rejects.toThrow(MediaEmptyFileException);
     });
 
-    it('throws MediaUnsupportedTypeException for unsupported file types', async () => {
-      const pdfFile: UploadedFile = {
-        buffer: Buffer.from('pdf data'),
-        mimetype: 'application/pdf',
-        size: 8,
-        originalname: 'doc.pdf',
-      };
+    it('throws MediaEmptyFileException when sizeBytes is 0 or negative', async () => {
+      await expect(
+        service.getPresignedUploadUrls({
+          files: [{ fileName: 'test.jpg', mimeType: 'image/jpeg', sizeBytes: 0 }],
+        }),
+      ).rejects.toThrow(MediaEmptyFileException);
+    });
 
-      await expect(service.upload(pdfFile)).rejects.toThrow(MediaUnsupportedTypeException);
+    it('throws MediaUnsupportedTypeException for unsupported mime types', async () => {
+      await expect(
+        service.getPresignedUploadUrls({
+          files: [{ fileName: 'doc.pdf', mimeType: 'application/pdf' }],
+        }),
+      ).rejects.toThrow(MediaUnsupportedTypeException);
     });
 
     it('throws MediaFileTooLargeException when image exceeds 10MB', async () => {
-      const oversizedImage: UploadedFile = {
-        buffer: Buffer.alloc(11 * 1024 * 1024),
-        mimetype: 'image/jpeg',
-        size: 11 * 1024 * 1024,
-        originalname: 'big.jpg',
-      };
-
-      await expect(service.upload(oversizedImage)).rejects.toThrow(MediaFileTooLargeException);
+      await expect(
+        service.getPresignedUploadUrls({
+          files: [
+            {
+              fileName: 'big.jpg',
+              mimeType: 'image/jpeg',
+              sizeBytes: 11 * 1024 * 1024,
+            },
+          ],
+        }),
+      ).rejects.toThrow(MediaFileTooLargeException);
     });
 
-    it('allows video files up to 50MB', async () => {
-      const videoFile: UploadedFile = {
-        buffer: Buffer.from('video data'),
-        mimetype: 'video/mp4',
-        size: 10,
-        originalname: 'clip.mp4',
-      };
-      mockStorageProvider.upload.mockImplementation((_, options: { key?: string }) =>
+    it('allows video files up to 50MB and rejects above 50MB', async () => {
+      mockStorageProvider.getPresignedUploadUrl.mockImplementation((options: { key: string }) =>
         Promise.resolve({
-          key: options.key ?? 'test.mp4',
+          uploadUrl: `https://signed.example.com/${options.key}`,
+          key: options.key,
+          expiresIn: 300,
         }),
       );
-      mockStorageProvider.getPublicUrl.mockReturnValue('https://cdn.timmbr.com/test.mp4');
+      mockStorageProvider.getPublicUrl.mockImplementation(
+        (key: string) => `https://cdn.timmbr.com/${key}`,
+      );
 
-      const result = await service.upload(videoFile);
+      const validVideoResult = await service.getPresignedUploadUrls({
+        files: [
+          {
+            fileName: 'video.mp4',
+            mimeType: 'video/mp4',
+            sizeBytes: 50 * 1024 * 1024,
+          },
+        ],
+      });
 
-      expect(result.key).toMatch(/^[0-9a-f-]+\.mp4$/);
+      expect(validVideoResult.files).toHaveLength(1);
+
+      await expect(
+        service.getPresignedUploadUrls({
+          files: [
+            {
+              fileName: 'huge-video.mp4',
+              mimeType: 'video/mp4',
+              sizeBytes: 51 * 1024 * 1024,
+            },
+          ],
+        }),
+      ).rejects.toThrow(MediaFileTooLargeException);
     });
   });
 

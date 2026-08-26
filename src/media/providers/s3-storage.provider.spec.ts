@@ -3,6 +3,8 @@ import { S3StorageProvider } from './s3-storage.provider';
 import { MediaStorageException } from '@/common/exceptions/media.exception';
 
 const mockSend = jest.fn();
+const mockGetSignedUrl = jest.fn();
+
 jest.mock('@aws-sdk/client-s3', () => {
   return {
     S3Client: jest.fn().mockImplementation(() => ({
@@ -10,6 +12,13 @@ jest.mock('@aws-sdk/client-s3', () => {
     })),
     PutObjectCommand: jest.fn().mockImplementation((args: unknown) => args),
     DeleteObjectCommand: jest.fn().mockImplementation((args: unknown) => args),
+  };
+});
+
+jest.mock('@aws-sdk/s3-request-presigner', () => {
+  return {
+    getSignedUrl: (...args: unknown[]): Promise<unknown> =>
+      mockGetSignedUrl(...args) as Promise<unknown>,
   };
 });
 
@@ -41,34 +50,54 @@ describe('S3StorageProvider', () => {
     expect(provider).toBeDefined();
   });
 
-  describe('upload', () => {
-    it('successfully uploads file and returns key', async () => {
-      mockSend.mockResolvedValueOnce({});
-      const buffer = Buffer.from('test-image-content');
+  describe('getPresignedUploadUrl', () => {
+    it('successfully generates presigned URL with key and expiration', async () => {
+      mockGetSignedUrl.mockResolvedValueOnce(
+        'https://signed-url.example.com/products/123/image.webp',
+      );
 
-      const result = await provider.upload(buffer, {
+      const result = await provider.getPresignedUploadUrl({
+        key: 'products/123/image.webp',
+        contentType: 'image/webp',
+        expiresInSeconds: 600,
+      });
+
+      expect(mockGetSignedUrl).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({
+        uploadUrl: 'https://signed-url.example.com/products/123/image.webp',
+        key: 'products/123/image.webp',
+        expiresIn: 600,
+      });
+    });
+
+    it('uses default expiration time when expiresInSeconds is not specified', async () => {
+      mockGetSignedUrl.mockResolvedValueOnce(
+        'https://signed-url.example.com/products/123/image.webp',
+      );
+
+      const result = await provider.getPresignedUploadUrl({
         key: 'products/123/image.webp',
         contentType: 'image/webp',
       });
 
-      expect(mockSend).toHaveBeenCalled();
-      expect(result).toEqual({ key: 'products/123/image.webp' });
+      expect(result.expiresIn).toBe(300);
+      expect(result.uploadUrl).toBe('https://signed-url.example.com/products/123/image.webp');
     });
 
     it('throws MediaStorageException when key is missing', async () => {
-      const buffer = Buffer.from('test');
-
-      await expect(provider.upload(buffer, { key: '', contentType: 'image/webp' })).rejects.toThrow(
-        MediaStorageException,
-      );
+      await expect(
+        provider.getPresignedUploadUrl({ key: '', contentType: 'image/webp' }),
+      ).rejects.toThrow(MediaStorageException);
     });
 
-    it('throws MediaStorageException when s3 client send fails', async () => {
-      mockSend.mockRejectedValueOnce(new Error('S3 connection error'));
-      const buffer = Buffer.from('test');
+    it('throws MediaStorageException when getSignedUrl fails', async () => {
+      mockGetSignedUrl.mockRejectedValueOnce(new Error('Presigner signing failure'));
 
       await expect(
-        provider.upload(buffer, { key: 'test.webp', contentType: 'image/webp' }),
+        provider.getPresignedUploadUrl({
+          key: 'test.webp',
+          contentType: 'image/webp',
+        }),
       ).rejects.toThrow(MediaStorageException);
     });
   });

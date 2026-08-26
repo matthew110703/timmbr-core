@@ -1,14 +1,20 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { STORAGE_PROVIDER } from './interfaces/storage-provider.interface';
-import type { StorageProvider, UploadResult } from './interfaces/storage-provider.interface';
-import { UploadedFile } from './interfaces/uploaded-file.interface';
-import { UploadMediaDto } from './dto/upload-media.dto';
-import { getExtensionForMime, validateMediaFile } from './common/media-validation.util';
+import type { StorageProvider } from './interfaces/storage-provider.interface';
+import { GeneratePresignedUrlsDto, PresignedUrlItemDto } from './dto/generate-presigned-url.dto';
+import { getExtensionForMime, validateMediaItem } from './common/media-validation.util';
 
-export interface MediaUploadResponse {
+export interface PresignedUrlItemResponse {
+  fileName: string;
   key: string;
-  url: string;
+  uploadUrl: string;
+  publicUrl: string;
+  expiresIn: number;
+}
+
+export interface GeneratePresignedUrlsResponse {
+  files: PresignedUrlItemResponse[];
 }
 
 @Injectable()
@@ -18,25 +24,44 @@ export class MediaService {
     private readonly storageProvider: StorageProvider,
   ) {}
 
-  async upload(file: UploadedFile, options?: UploadMediaDto): Promise<MediaUploadResponse> {
-    validateMediaFile(file);
+  async getPresignedUploadUrls(
+    dto: GeneratePresignedUrlsDto,
+  ): Promise<GeneratePresignedUrlsResponse> {
+    const folder = dto.folder ? dto.folder.replace(/^\/+|\/+$/g, '').trim() : '';
 
-    const extension = getExtensionForMime(file.mimetype, file.originalname);
-    const uniqueId = randomUUID();
-    const folder = options?.folder ? options.folder.replace(/^\/+|\/+$/g, '').trim() : '';
-    const key = folder ? `${folder}/${uniqueId}.${extension}` : `${uniqueId}.${extension}`;
+    const files = await Promise.all(
+      dto.files.map((item) => this.generateSinglePresignedUrl(item, folder)),
+    );
 
-    const result: UploadResult = await this.storageProvider.upload(file.buffer, {
-      key,
-      folder,
-      contentType: file.mimetype,
+    return { files };
+  }
+
+  private async generateSinglePresignedUrl(
+    item: PresignedUrlItemDto,
+    folder: string,
+  ): Promise<PresignedUrlItemResponse> {
+    validateMediaItem({
+      mimeType: item.mimeType,
+      sizeBytes: item.sizeBytes,
     });
 
-    const url = this.getPublicUrl(result.key);
+    const extension = getExtensionForMime(item.mimeType, item.fileName);
+    const uniqueId = randomUUID();
+    const key = folder ? `${folder}/${uniqueId}.${extension}` : `${uniqueId}.${extension}`;
+
+    const presigned = await this.storageProvider.getPresignedUploadUrl({
+      key,
+      contentType: item.mimeType,
+    });
+
+    const publicUrl = this.getPublicUrl(key);
 
     return {
-      key: result.key,
-      url,
+      fileName: item.fileName,
+      key: presigned.key,
+      uploadUrl: presigned.uploadUrl,
+      publicUrl,
+      expiresIn: presigned.expiresIn,
     };
   }
 

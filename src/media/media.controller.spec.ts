@@ -1,14 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MediaController } from './media.controller';
 import { MediaService } from './media.service';
-import { FastifyRequest } from 'fastify';
-import { MediaEmptyFileException } from '@/common/exceptions/media.exception';
 
 describe('MediaController', () => {
   let controller: MediaController;
 
   const mockMediaService = {
-    upload: jest.fn(),
+    getPresignedUploadUrls: jest.fn(),
     delete: jest.fn(),
     getPublicUrl: jest.fn(),
   };
@@ -33,59 +31,36 @@ describe('MediaController', () => {
     expect(controller).toBeDefined();
   });
 
-  describe('upload', () => {
-    it('successfully processes multipart request and calls mediaService.upload', async () => {
-      const fakeBuffer = Buffer.from('test-data');
-      const mockReq = {
-        isMultipart: () => true,
-        file: () =>
-          Promise.resolve({
-            toBuffer: () => Promise.resolve(fakeBuffer),
-            mimetype: 'image/webp',
-            filename: 'sample.webp',
-            fields: {
-              folder: { value: 'products/456' },
-            },
-          }),
-      } as unknown as FastifyRequest;
-
-      const uploadResult = {
-        key: 'products/456/uuid.webp',
-        url: 'https://cdn.timmbr.com/products/456/uuid.webp',
+  describe('generatePresignedUrls', () => {
+    it('calls mediaService.getPresignedUploadUrls and returns generated URLs', async () => {
+      const dto = {
+        folder: 'products/456',
+        files: [
+          {
+            fileName: 'sample.webp',
+            mimeType: 'image/webp',
+            sizeBytes: 1024,
+          },
+        ],
       };
-      mockMediaService.upload.mockResolvedValue(uploadResult);
 
-      const result = await controller.upload(mockReq);
+      const mockResponse = {
+        files: [
+          {
+            fileName: 'sample.webp',
+            key: 'products/456/uuid.webp',
+            uploadUrl: 'https://signed.example.com/products/456/uuid.webp',
+            publicUrl: 'https://cdn.timmbr.com/products/456/uuid.webp',
+            expiresIn: 300,
+          },
+        ],
+      };
+      mockMediaService.getPresignedUploadUrls.mockResolvedValue(mockResponse);
 
-      expect(mockMediaService.upload).toHaveBeenCalledWith(
-        {
-          buffer: fakeBuffer,
-          mimetype: 'image/webp',
-          size: fakeBuffer.length,
-          originalname: 'sample.webp',
-        },
-        expect.objectContaining({
-          folder: 'products/456',
-        }),
-      );
-      expect(result).toBe(uploadResult);
-    });
+      const result = await controller.generatePresignedUrls(dto);
 
-    it('throws MediaEmptyFileException if request is not multipart', async () => {
-      const mockReq = {
-        isMultipart: () => false,
-      } as unknown as FastifyRequest;
-
-      await expect(controller.upload(mockReq)).rejects.toThrow(MediaEmptyFileException);
-    });
-
-    it('throws MediaEmptyFileException if req.file() returns null', async () => {
-      const mockReq = {
-        isMultipart: () => true,
-        file: () => Promise.resolve(null),
-      } as unknown as FastifyRequest;
-
-      await expect(controller.upload(mockReq)).rejects.toThrow(MediaEmptyFileException);
+      expect(mockMediaService.getPresignedUploadUrls).toHaveBeenCalledWith(dto);
+      expect(result).toEqual(mockResponse);
     });
   });
 

@@ -1,4 +1,4 @@
 export const MEDIA_ROUTES = {
-  UPLOAD: 'upload',
+  PRESIGNED_URL: 'presigned-url',
   URL: 'url',
 } as const;

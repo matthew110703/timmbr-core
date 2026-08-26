@@ -1,15 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '@/config/env';
 import {
+  PresignedUploadOptions,
+  PresignedUploadResult,
   StorageProvider,
-  UploadOptions,
-  UploadResult,
 } from '../interfaces/storage-provider.interface';
 import {
   MediaMissingConfigException,
   MediaStorageException,
 } from '@/common/exceptions/media.exception';
+import { MEDIA_CONSTANTS } from '../common/media.constants';
 
 @Injectable()
 export class S3StorageProvider implements StorageProvider {
@@ -32,31 +34,36 @@ export class S3StorageProvider implements StorageProvider {
     });
   }
 
-  async upload(file: Buffer, options: UploadOptions): Promise<UploadResult> {
+  async getPresignedUploadUrl(options: PresignedUploadOptions): Promise<PresignedUploadResult> {
     if (!this.bucket) {
       throw new MediaMissingConfigException('STORAGE_BUCKET is not configured.');
     }
 
     if (!options.key) {
-      throw new MediaStorageException('Storage key is required for upload.');
+      throw new MediaStorageException('Storage key is required for presigned URL generation.');
     }
+
+    const expiresIn =
+      options.expiresInSeconds ?? MEDIA_CONSTANTS.DEFAULT_PRESIGNED_EXPIRATION_SECONDS;
 
     try {
       const command = new PutObjectCommand({
         Bucket: this.bucket,
         Key: options.key,
-        Body: file,
         ContentType: options.contentType,
       });
 
-      await this.client.send(command);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+      const uploadUrl = await getSignedUrl(this.client as any, command, { expiresIn });
 
       return {
+        uploadUrl,
         key: options.key,
+        expiresIn,
       };
     } catch (error) {
-      this.logger.error(`Failed to upload object to S3/R2 with key: ${options.key}`, error);
-      throw new MediaStorageException('Failed to upload file to storage.');
+      this.logger.error(`Failed to generate presigned upload URL for key: ${options.key}`, error);
+      throw new MediaStorageException('Failed to generate presigned upload URL.');
     }
   }
 

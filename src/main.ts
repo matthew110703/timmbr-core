@@ -14,7 +14,6 @@ import { env } from './config/env';
 import { APP_CONFIG } from './config/app.config';
 import helmet from '@fastify/helmet';
 import fastifyCookie from '@fastify/cookie';
-import fastifyMultipart from '@fastify/multipart';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
 async function bootstrap() {
@@ -39,13 +38,6 @@ async function bootstrap() {
   // Cookies
   await app.register(fastifyCookie as any, {
     secret: env.COOKIE_SECRET,
-  });
-
-  // Multipart file uploads
-  await app.register(fastifyMultipart as any, {
-    limits: {
-      fileSize: 50 * 1024 * 1024, // 50MB max limit
-    },
   });
 
   // CORS
