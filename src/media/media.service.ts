@@ -65,6 +65,10 @@ export class MediaService {
     };
   }
 
+  async exists(key: string): Promise<boolean> {
+    return this.storageProvider.exists(key);
+  }
+
   async delete(key: string): Promise<void> {
     await this.storageProvider.delete(key);
   }

@@ -12,6 +12,7 @@ describe('MediaService', () => {
 
   const mockStorageProvider = {
     getPresignedUploadUrl: jest.fn(),
+    exists: jest.fn(),
     delete: jest.fn(),
     getPublicUrl: jest.fn(),
   };
@@ -166,6 +167,17 @@ describe('MediaService', () => {
           ],
         }),
       ).rejects.toThrow(MediaFileTooLargeException);
+    });
+  });
+
+  describe('exists', () => {
+    it('delegates existence check to storage provider', async () => {
+      mockStorageProvider.exists.mockResolvedValueOnce(true);
+
+      const result = await service.exists('products/123/image.webp');
+
+      expect(mockStorageProvider.exists).toHaveBeenCalledWith('products/123/image.webp');
+      expect(result).toBe(true);
     });
   });
 

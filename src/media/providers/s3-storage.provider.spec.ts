@@ -12,6 +12,7 @@ jest.mock('@aws-sdk/client-s3', () => {
     })),
     PutObjectCommand: jest.fn().mockImplementation((args: unknown) => args),
     DeleteObjectCommand: jest.fn().mockImplementation((args: unknown) => args),
+    HeadObjectCommand: jest.fn().mockImplementation((args: unknown) => args),
   };
 });
 
@@ -99,6 +100,53 @@ describe('S3StorageProvider', () => {
           contentType: 'image/webp',
         }),
       ).rejects.toThrow(MediaStorageException);
+    });
+  });
+
+  describe('exists', () => {
+    it('returns true when object exists in storage', async () => {
+      mockSend.mockResolvedValueOnce({});
+
+      const result = await provider.exists('products/123/image.webp');
+
+      expect(mockSend).toHaveBeenCalled();
+      expect(result).toBe(true);
+    });
+
+    it('returns false when empty key is provided', async () => {
+      const result = await provider.exists('');
+      expect(result).toBe(false);
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it('returns false when storage returns NotFound error', async () => {
+      const notFoundError = new Error('Not Found');
+      notFoundError.name = 'NotFound';
+      mockSend.mockRejectedValueOnce(notFoundError);
+
+      const result = await provider.exists('products/123/missing.webp');
+
+      expect(result).toBe(false);
+    });
+
+    it('returns false when storage returns 404 httpStatusCode', async () => {
+      const error404 = {
+        name: 'NoSuchKey',
+        $metadata: { httpStatusCode: 404 },
+      };
+      mockSend.mockRejectedValueOnce(error404);
+
+      const result = await provider.exists('products/123/missing.webp');
+
+      expect(result).toBe(false);
+    });
+
+    it('throws MediaStorageException on other storage failures', async () => {
+      mockSend.mockRejectedValueOnce(new Error('Network error'));
+
+      await expect(provider.exists('products/123/image.webp')).rejects.toThrow(
+        MediaStorageException,
+      );
     });
   });
 

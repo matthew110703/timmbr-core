@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '@/config/env';
 import {
@@ -64,6 +69,38 @@ export class S3StorageProvider implements StorageProvider {
     } catch (error) {
       this.logger.error(`Failed to generate presigned upload URL for key: ${options.key}`, error);
       throw new MediaStorageException('Failed to generate presigned upload URL.');
+    }
+  }
+
+  async exists(key: string): Promise<boolean> {
+    if (!this.bucket) {
+      throw new MediaMissingConfigException('STORAGE_BUCKET is not configured.');
+    }
+
+    if (!key || key.trim() === '') {
+      return false;
+    }
+
+    try {
+      const command = new HeadObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      });
+
+      await this.client.send(command);
+      return true;
+    } catch (error: unknown) {
+      const err = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+      if (
+        err.name === 'NotFound' ||
+        err.name === 'NoSuchKey' ||
+        err.$metadata?.httpStatusCode === 404
+      ) {
+        return false;
+      }
+
+      this.logger.error(`Failed to check object existence for key: ${key}`, error);
+      throw new MediaStorageException('Failed to check file existence in storage.');
     }
   }
 

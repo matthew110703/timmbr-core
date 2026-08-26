@@ -12,6 +12,7 @@ export interface PresignedUploadResult {
 
 export interface StorageProvider {
   getPresignedUploadUrl(options: PresignedUploadOptions): Promise<PresignedUploadResult>;
+  exists(key: string): Promise<boolean>;
   delete(key: string): Promise<void>;
   getPublicUrl(key: string): string;
 }
