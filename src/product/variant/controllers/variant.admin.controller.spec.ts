@@ -18,6 +18,10 @@ const mockVariantResponse = {
   currency: 'INR',
   status: VariantStatus.ACTIVE,
   isDefault: true,
+  availability: {
+    status: 'IN_STOCK',
+    quantity: 10,
+  },
   createdAt: new Date(),
   updatedAt: new Date(),
 };

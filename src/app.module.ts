@@ -22,6 +22,7 @@ import { CategoryModule } from './category/category.module';
 import { BrandModule } from './brand/brand.module';
 import { ProductModule } from './product/product.module';
 import { MediaModule } from './media/media.module';
+import { InventoryModule } from './inventory/inventory.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { MediaModule } from './media/media.module';
     BrandModule,
     ProductModule,
     MediaModule,
+    InventoryModule,
   ],
   controllers: [AppController],
   providers: [

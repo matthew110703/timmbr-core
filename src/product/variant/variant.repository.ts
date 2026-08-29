@@ -1,36 +1,43 @@
 import { PrismaService } from '@/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';
 import { ProductVariant, Prisma } from '@prisma/client';
+import { ProductVariantWithInventory } from './variant.mapper';
 
 @Injectable()
 export class VariantRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findById(id: string): Promise<ProductVariant | null> {
+  async findById(id: string): Promise<ProductVariantWithInventory | null> {
     return this.prisma.productVariant.findUnique({
       where: { id },
+      include: { inventory: true },
     });
   }
 
-  async findBySku(sku: string): Promise<ProductVariant | null> {
+  async findBySku(sku: string): Promise<ProductVariantWithInventory | null> {
     return this.prisma.productVariant.findUnique({
       where: { sku },
+      include: { inventory: true },
     });
   }
 
-  async findFirst(where: Prisma.ProductVariantWhereInput): Promise<ProductVariant | null> {
+  async findFirst(
+    where: Prisma.ProductVariantWhereInput,
+  ): Promise<ProductVariantWithInventory | null> {
     return this.prisma.productVariant.findFirst({
       where,
+      include: { inventory: true },
     });
   }
 
   async findMany(
     where: Prisma.ProductVariantWhereInput,
     orderBy: Prisma.ProductVariantOrderByWithRelationInput = { createdAt: 'asc' },
-  ): Promise<ProductVariant[]> {
+  ): Promise<ProductVariantWithInventory[]> {
     return this.prisma.productVariant.findMany({
       where,
       orderBy,
+      include: { inventory: true },
     });
   }
 
@@ -42,13 +49,14 @@ export class VariantRepository {
     where: Prisma.ProductVariantWhereInput,
     page: number,
     limit: number,
-  ): Promise<[ProductVariant[], number]> {
+  ): Promise<[ProductVariantWithInventory[], number]> {
     return this.prisma.$transaction([
       this.prisma.productVariant.findMany({
         where,
         skip: (page - 1) * limit,
         take: limit,
         orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+        include: { inventory: true },
       }),
       this.prisma.productVariant.count({ where }),
     ]);
@@ -56,19 +64,21 @@ export class VariantRepository {
 
   async create(
     data: Prisma.ProductVariantCreateInput | Prisma.ProductVariantUncheckedCreateInput,
-  ): Promise<ProductVariant> {
+  ): Promise<ProductVariantWithInventory> {
     return this.prisma.productVariant.create({
       data,
+      include: { inventory: true },
     });
   }
 
   async update(
     id: string,
     data: Prisma.ProductVariantUpdateInput | Prisma.ProductVariantUncheckedUpdateInput,
-  ): Promise<ProductVariant> {
+  ): Promise<ProductVariantWithInventory> {
     return this.prisma.productVariant.update({
       where: { id },
       data,
+      include: { inventory: true },
     });
   }
 

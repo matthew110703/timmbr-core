@@ -42,6 +42,13 @@ const mockVariant1 = {
   currency: 'INR',
   status: VariantStatus.ACTIVE,
   isDefault: true,
+  inventory: {
+    id: '33333333-3333-3333-3333-333333333333',
+    variantId: VARIANT_ID_1,
+    quantity: 10,
+    reservedQuantity: 2,
+    updatedAt: new Date('2026-01-01'),
+  },
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
 };
@@ -55,6 +62,13 @@ const mockVariant2 = {
   currency: 'INR',
   status: VariantStatus.ACTIVE,
   isDefault: false,
+  inventory: {
+    id: '44444444-4444-4444-4444-444444444444',
+    variantId: VARIANT_ID_2,
+    quantity: 0,
+    reservedQuantity: 0,
+    updatedAt: new Date('2026-01-02'),
+  },
   createdAt: new Date('2026-01-02'),
   updatedAt: new Date('2026-01-02'),
 };
@@ -98,9 +112,9 @@ describe('VariantService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         VariantService,
-        { provide: PrismaService, useValue: mockPrismaService },
         { provide: VariantRepository, useValue: mockVariantRepository },
         { provide: ProductRepository, useValue: mockProductRepository },
+        { provide: PrismaService, useValue: mockPrismaService },
       ],
     }).compile();
 
@@ -155,7 +169,7 @@ describe('VariantService', () => {
       expect(error).toBeInstanceOf(VariantInvalidPriceException);
     });
 
-    it('automatically marks first variant as default true', async () => {
+    it('automatically marks first variant as default true and computes availability', async () => {
       mockProductRepository.findById.mockResolvedValue(mockProduct);
       mockVariantRepository.findBySku.mockResolvedValue(null);
       mockVariantRepository.count.mockResolvedValue(0);
@@ -173,10 +187,21 @@ describe('VariantService', () => {
           compareAtPrice: 30000,
           currency: 'INR',
           status: VariantStatus.ACTIVE,
+          inventory: {
+            create: {
+              quantity: 0,
+              reservedQuantity: 0,
+            },
+          },
         },
+        include: { inventory: true },
       });
       expect(result.id).toBe(VARIANT_ID_1);
       expect(result.isDefault).toBe(true);
+      expect(result.availability).toEqual({
+        status: 'IN_STOCK',
+        quantity: 8, // 10 - 2
+      });
     });
 
     it('sets isDefault: false for subsequent variants when not specified', async () => {
@@ -199,9 +224,20 @@ describe('VariantService', () => {
           compareAtPrice: null,
           currency: 'INR',
           status: VariantStatus.ACTIVE,
+          inventory: {
+            create: {
+              quantity: 0,
+              reservedQuantity: 0,
+            },
+          },
         },
+        include: { inventory: true },
       });
       expect(result.isDefault).toBe(false);
+      expect(result.availability).toEqual({
+        status: 'OUT_OF_STOCK',
+        quantity: 0,
+      });
     });
 
     it('unsets other default variants when a subsequent variant is created with isDefault: true', async () => {
@@ -224,6 +260,24 @@ describe('VariantService', () => {
         where: { productId: PRODUCT_ID, isDefault: true },
         data: { isDefault: false },
       });
+      expect(mockPrismaService.productVariant.create).toHaveBeenCalledWith({
+        data: {
+          isDefault: true,
+          productId: PRODUCT_ID,
+          sku: 'OAK-002',
+          price: 35000,
+          compareAtPrice: null,
+          currency: 'INR',
+          status: VariantStatus.ACTIVE,
+          inventory: {
+            create: {
+              quantity: 0,
+              reservedQuantity: 0,
+            },
+          },
+        },
+        include: { inventory: true },
+      });
       expect(result.isDefault).toBe(true);
     });
   });
@@ -244,7 +298,7 @@ describe('VariantService', () => {
       expect(error).toBeInstanceOf(ProductNotFoundException);
     });
 
-    it('throws VariantNotFoundException when variant does not exist or productId mismatch', async () => {
+    it('throws VariantNotFoundException when variant does not exist', async () => {
       mockProductRepository.findById.mockResolvedValue(mockProduct);
       mockVariantRepository.findById.mockResolvedValue(null);
 
@@ -255,10 +309,13 @@ describe('VariantService', () => {
       expect(error).toBeInstanceOf(VariantNotFoundException);
     });
 
-    it('throws VariantAlreadyExistsException when updating SKU to an existing one', async () => {
+    it('throws VariantAlreadyExistsException if updated SKU is taken by another variant', async () => {
       mockProductRepository.findById.mockResolvedValue(mockProduct);
       mockVariantRepository.findById.mockResolvedValue(mockVariant1);
-      mockVariantRepository.findBySku.mockResolvedValue({ ...mockVariant2, id: VARIANT_ID_2 });
+      mockVariantRepository.findBySku.mockResolvedValue({
+        ...mockVariant2,
+        id: 'different-id',
+      });
 
       const error = await service
         .update(PRODUCT_ID, VARIANT_ID_1, { sku: 'OAK-002' })
@@ -267,57 +324,56 @@ describe('VariantService', () => {
       expect(error).toBeInstanceOf(VariantAlreadyExistsException);
     });
 
-    it('throws VariantInvalidPriceException when updating price to be higher than existing compareAtPrice', async () => {
+    it('throws VariantInvalidPriceException when compareAtPrice < effective price', async () => {
       mockProductRepository.findById.mockResolvedValue(mockProduct);
-      mockVariantRepository.findById.mockResolvedValue(mockVariant1); // compareAtPrice = 30000
+      mockVariantRepository.findById.mockResolvedValue(mockVariant1); // price: 25000
 
       const error = await service
-        .update(PRODUCT_ID, VARIANT_ID_1, { price: 35000 })
+        .update(PRODUCT_ID, VARIANT_ID_1, { compareAtPrice: 20000 })
         .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(VariantInvalidPriceException);
     });
 
-    it('promotes another active variant to default when current default is updated to DISCONTINUED', async () => {
+    it('updates variant and returns updated response with availability', async () => {
       mockProductRepository.findById.mockResolvedValue(mockProduct);
-      mockVariantRepository.findById.mockResolvedValue(mockVariant1); // isDefault: true
-      mockPrismaService.productVariant.findFirst.mockResolvedValue(mockVariant2); // next active variant
+      mockVariantRepository.findById.mockResolvedValue(mockVariant1);
       mockPrismaService.productVariant.update.mockResolvedValue({
         ...mockVariant1,
-        status: VariantStatus.DISCONTINUED,
-        isDefault: false,
+        price: 26000,
+        compareAtPrice: 32000,
       });
 
-      await service.update(PRODUCT_ID, VARIANT_ID_1, {
-        status: VariantStatus.DISCONTINUED,
-      });
+      const result = await service.update(PRODUCT_ID, VARIANT_ID_1, updateDto);
 
-      expect(mockPrismaService.productVariant.findFirst).toHaveBeenCalledWith({
-        where: {
-          productId: PRODUCT_ID,
-          id: { not: VARIANT_ID_1 },
-          status: VariantStatus.ACTIVE,
-        },
-        orderBy: { createdAt: 'asc' },
-      });
       expect(mockPrismaService.productVariant.update).toHaveBeenCalledWith({
-        where: { id: VARIANT_ID_2 },
-        data: { isDefault: true },
+        where: { id: VARIANT_ID_1 },
+        data: {
+          price: 26000,
+          compareAtPrice: 32000,
+          isDefault: true,
+        },
+        include: { inventory: true },
+      });
+      expect(result.price).toBe(26000);
+      expect(result.availability).toEqual({
+        status: 'IN_STOCK',
+        quantity: 8,
       });
     });
 
-    it('promotes another active variant to default when current default is updated to HIDDEN', async () => {
+    it('automatically promotes another active variant to default when default variant becomes DISCONTINUED', async () => {
       mockProductRepository.findById.mockResolvedValue(mockProduct);
       mockVariantRepository.findById.mockResolvedValue(mockVariant1); // isDefault: true
       mockPrismaService.productVariant.findFirst.mockResolvedValue(mockVariant2); // next active variant
       mockPrismaService.productVariant.update.mockResolvedValue({
         ...mockVariant1,
-        status: VariantStatus.HIDDEN,
+        status: VariantStatus.DISCONTINUED,
         isDefault: false,
       });
 
-      await service.update(PRODUCT_ID, VARIANT_ID_1, {
-        status: VariantStatus.HIDDEN,
+      const result = await service.update(PRODUCT_ID, VARIANT_ID_1, {
+        status: VariantStatus.DISCONTINUED,
       });
 
       expect(mockPrismaService.productVariant.findFirst).toHaveBeenCalledWith({
@@ -331,6 +387,10 @@ describe('VariantService', () => {
       expect(mockPrismaService.productVariant.update).toHaveBeenCalledWith({
         where: { id: VARIANT_ID_2 },
         data: { isDefault: true },
+      });
+      expect(result.availability).toEqual({
+        status: 'DISCONTINUED',
+        quantity: 0,
       });
     });
 
@@ -373,7 +433,7 @@ describe('VariantService', () => {
       );
     });
 
-    it('filters active and out_of_stock variants for public calls', async () => {
+    it('filters active variants for public calls', async () => {
       mockProductRepository.findFirst.mockResolvedValue(mockProduct);
       mockVariantRepository.findPaginated.mockResolvedValue([[mockVariant1], 1]);
 
@@ -383,9 +443,7 @@ describe('VariantService', () => {
       expect(mockVariantRepository.findPaginated).toHaveBeenCalledWith(
         {
           productId: PRODUCT_ID,
-          status: {
-            in: [VariantStatus.ACTIVE, VariantStatus.OUT_OF_STOCK],
-          },
+          status: VariantStatus.ACTIVE,
         },
         1,
         10,
@@ -402,7 +460,7 @@ describe('VariantService', () => {
   });
 
   describe('getVariantById', () => {
-    it('returns variant when found', async () => {
+    it('returns variant with availability when found', async () => {
       mockProductRepository.findFirst.mockResolvedValue(mockProduct);
       mockVariantRepository.findById.mockResolvedValue(mockVariant1);
 
@@ -410,6 +468,10 @@ describe('VariantService', () => {
 
       expect(result.id).toBe(VARIANT_ID_1);
       expect(result.sku).toBe('OAK-001');
+      expect(result.availability).toEqual({
+        status: 'IN_STOCK',
+        quantity: 8,
+      });
     });
 
     it('throws VariantNotFoundException if variant does not exist', async () => {

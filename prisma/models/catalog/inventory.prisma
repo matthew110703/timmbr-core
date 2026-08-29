@@ -6,5 +6,6 @@ model Inventory {
   updatedAt        DateTime @updatedAt
 
   // Relations
-  variant ProductVariant @relation(fields: [variantId], references: [id])
+  variant      ProductVariant         @relation(fields: [variantId], references: [id])
+  transactions InventoryTransaction[]
 }

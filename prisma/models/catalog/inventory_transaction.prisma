@@ -1,0 +1,27 @@
+enum InventoryTransactionType {
+  RECEIPT      // Inbound stock from suppliers or purchase orders (+)
+  SALE         // Outbound stock sold and fulfilled for customer orders (-)
+  RETURN       // Inbound stock restored from customer returns or cancellations (+)
+  DAMAGE       // Outbound stock written off due to damage in warehouse or transit (-)
+  LOSS         // Outbound stock written off due to theft, shrinkage, or lost items (-)
+  ADJUSTMENT   // Manual stock reconciliation, physical audit corrections, or initial counts (+/-)
+  TRANSFER_IN  // Inbound stock transferred from another warehouse or facility (+)
+  TRANSFER_OUT // Outbound stock transferred out to another warehouse or facility (-)
+}
+
+model InventoryTransaction {
+  id             String                   @id @default(uuid())
+  inventoryId    String
+  type           InventoryTransactionType
+  quantity       Int
+  quantityBefore Int
+  quantityAfter  Int
+  reason         String?
+  referenceType  String?
+  referenceId    String?
+  createdBy      String?
+  createdAt      DateTime                 @default(now())
+
+  // Relations
+  inventory Inventory @relation(fields: [inventoryId], references: [id])
+}

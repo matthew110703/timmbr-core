@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ProductStatus } from '@prisma/client';
+import { ProductStatus, VariantStatus } from '@prisma/client';
 import { ProductService } from './product.service';
 import { ProductRepository } from './product.repository';
 import { CategoryRepository } from '@/category/category.repository';
@@ -224,7 +224,7 @@ describe('ProductService', () => {
         status: ProductStatus.ACTIVE,
         variants: {
           some: {
-            status: { in: ['ACTIVE', 'OUT_OF_STOCK'] },
+            status: VariantStatus.ACTIVE,
           },
         },
       });
@@ -259,7 +259,7 @@ describe('ProductService', () => {
         status: ProductStatus.ACTIVE,
         variants: {
           some: {
-            status: { in: ['ACTIVE', 'OUT_OF_STOCK'] },
+            status: VariantStatus.ACTIVE,
           },
         },
       });

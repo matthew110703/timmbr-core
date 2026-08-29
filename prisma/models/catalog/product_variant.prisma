@@ -1,8 +1,7 @@
 enum VariantStatus {
-  ACTIVE
-  OUT_OF_STOCK
-  DISCONTINUED
-  HIDDEN
+  ACTIVE       // Live and visible on storefront; purchasable when available stock > 0
+  DISCONTINUED // Permanently retired / end-of-life; visible for history but not purchasable
+  HIDDEN       // Unpublished / draft variant hidden from customer storefront
 }
 
 model ProductVariant {

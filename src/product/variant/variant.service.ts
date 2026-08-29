@@ -62,7 +62,14 @@ export class VariantService {
           currency: dto.currency ?? 'INR',
           status: dto.status ?? VariantStatus.ACTIVE,
           isDefault: shouldBeDefault,
+          inventory: {
+            create: {
+              quantity: 0,
+              reservedQuantity: 0,
+            },
+          },
         },
+        include: { inventory: true },
       });
     });
 
@@ -165,6 +172,7 @@ export class VariantService {
           ...(dto.status && { status: dto.status }),
           isDefault: willBeDefault,
         },
+        include: { inventory: true },
       });
     });
 
@@ -183,7 +191,7 @@ export class VariantService {
             status: ProductStatus.ACTIVE,
             variants: {
               some: {
-                status: { in: [VariantStatus.ACTIVE, VariantStatus.OUT_OF_STOCK] },
+                status: VariantStatus.ACTIVE,
               },
             },
           }
@@ -200,9 +208,7 @@ export class VariantService {
       productId,
       ...(onlyActive
         ? {
-            status: {
-              in: [VariantStatus.ACTIVE, VariantStatus.OUT_OF_STOCK],
-            },
+            status: VariantStatus.ACTIVE,
           }
         : query.status && { status: query.status }),
       ...(query.isDefault !== undefined && { isDefault: query.isDefault }),
@@ -236,7 +242,7 @@ export class VariantService {
             status: ProductStatus.ACTIVE,
             variants: {
               some: {
-                status: { in: [VariantStatus.ACTIVE, VariantStatus.OUT_OF_STOCK] },
+                status: VariantStatus.ACTIVE,
               },
             },
           }
@@ -251,11 +257,7 @@ export class VariantService {
       throw new VariantNotFoundException();
     }
 
-    if (
-      onlyActive &&
-      variant.status !== VariantStatus.ACTIVE &&
-      variant.status !== VariantStatus.OUT_OF_STOCK
-    ) {
+    if (onlyActive && variant.status !== VariantStatus.ACTIVE) {
       throw new VariantNotFoundException();
     }
 

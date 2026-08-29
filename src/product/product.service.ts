@@ -129,7 +129,7 @@ export class ProductService {
             status: ProductStatus.ACTIVE,
             variants: {
               some: {
-                status: { in: [VariantStatus.ACTIVE, VariantStatus.OUT_OF_STOCK] },
+                status: VariantStatus.ACTIVE,
               },
             },
           }
@@ -170,7 +170,7 @@ export class ProductService {
             status: ProductStatus.ACTIVE,
             variants: {
               some: {
-                status: { in: [VariantStatus.ACTIVE, VariantStatus.OUT_OF_STOCK] },
+                status: VariantStatus.ACTIVE,
               },
             },
           }
@@ -192,7 +192,7 @@ export class ProductService {
             status: ProductStatus.ACTIVE,
             variants: {
               some: {
-                status: { in: [VariantStatus.ACTIVE, VariantStatus.OUT_OF_STOCK] },
+                status: VariantStatus.ACTIVE,
               },
             },
           }

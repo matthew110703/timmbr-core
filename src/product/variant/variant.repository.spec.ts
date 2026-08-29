@@ -15,6 +15,13 @@ const mockVariant = {
   currency: 'INR',
   status: VariantStatus.ACTIVE,
   isDefault: true,
+  inventory: {
+    id: '33333333-3333-3333-3333-333333333333',
+    variantId: VARIANT_ID_1,
+    quantity: 100,
+    reservedQuantity: 10,
+    updatedAt: new Date('2026-01-01'),
+  },
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
 };
@@ -57,45 +64,50 @@ describe('VariantRepository', () => {
   });
 
   describe('findById', () => {
-    it('delegates to prisma.productVariant.findUnique', async () => {
+    it('delegates to prisma.productVariant.findUnique with inventory included', async () => {
       mockPrismaService.productVariant.findUnique.mockResolvedValue(mockVariant);
 
       const result = await repository.findById(VARIANT_ID_1);
 
       expect(mockPrismaService.productVariant.findUnique).toHaveBeenCalledWith({
         where: { id: VARIANT_ID_1 },
+        include: { inventory: true },
       });
       expect(result).toBe(mockVariant);
     });
   });
 
   describe('findBySku', () => {
-    it('delegates to prisma.productVariant.findUnique', async () => {
+    it('delegates to prisma.productVariant.findUnique with inventory included', async () => {
       mockPrismaService.productVariant.findUnique.mockResolvedValue(mockVariant);
 
       const result = await repository.findBySku('OAK-TABLE-001');
 
       expect(mockPrismaService.productVariant.findUnique).toHaveBeenCalledWith({
         where: { sku: 'OAK-TABLE-001' },
+        include: { inventory: true },
       });
       expect(result).toBe(mockVariant);
     });
   });
 
   describe('findFirst', () => {
-    it('delegates to prisma.productVariant.findFirst', async () => {
+    it('delegates to prisma.productVariant.findFirst with inventory included', async () => {
       const where = { productId: PRODUCT_ID_1, isDefault: true };
       mockPrismaService.productVariant.findFirst.mockResolvedValue(mockVariant);
 
       const result = await repository.findFirst(where);
 
-      expect(mockPrismaService.productVariant.findFirst).toHaveBeenCalledWith({ where });
+      expect(mockPrismaService.productVariant.findFirst).toHaveBeenCalledWith({
+        where,
+        include: { inventory: true },
+      });
       expect(result).toBe(mockVariant);
     });
   });
 
   describe('findMany', () => {
-    it('delegates to prisma.productVariant.findMany', async () => {
+    it('delegates to prisma.productVariant.findMany with inventory included', async () => {
       const where = { productId: PRODUCT_ID_1 };
       mockPrismaService.productVariant.findMany.mockResolvedValue([mockVariant]);
 
@@ -104,6 +116,7 @@ describe('VariantRepository', () => {
       expect(mockPrismaService.productVariant.findMany).toHaveBeenCalledWith({
         where,
         orderBy: { createdAt: 'asc' },
+        include: { inventory: true },
       });
       expect(result).toEqual([mockVariant]);
     });
@@ -123,7 +136,7 @@ describe('VariantRepository', () => {
   });
 
   describe('findPaginated', () => {
-    it('executes findMany and count in transaction', async () => {
+    it('executes findMany and count in transaction with inventory included', async () => {
       mockPrismaService.productVariant.findMany.mockResolvedValue([mockVariant]);
       mockPrismaService.productVariant.count.mockResolvedValue(1);
 
@@ -136,7 +149,7 @@ describe('VariantRepository', () => {
   });
 
   describe('create', () => {
-    it('delegates to prisma.productVariant.create', async () => {
+    it('delegates to prisma.productVariant.create with inventory included', async () => {
       const data = {
         productId: PRODUCT_ID_1,
         sku: 'OAK-TABLE-001',
@@ -146,13 +159,16 @@ describe('VariantRepository', () => {
 
       const result = await repository.create(data);
 
-      expect(mockPrismaService.productVariant.create).toHaveBeenCalledWith({ data });
+      expect(mockPrismaService.productVariant.create).toHaveBeenCalledWith({
+        data,
+        include: { inventory: true },
+      });
       expect(result).toBe(mockVariant);
     });
   });
 
   describe('update', () => {
-    it('delegates to prisma.productVariant.update', async () => {
+    it('delegates to prisma.productVariant.update with inventory included', async () => {
       const data = { price: 26000 };
       mockPrismaService.productVariant.update.mockResolvedValue(mockVariant);
 
@@ -161,6 +177,7 @@ describe('VariantRepository', () => {
       expect(mockPrismaService.productVariant.update).toHaveBeenCalledWith({
         where: { id: VARIANT_ID_1 },
         data,
+        include: { inventory: true },
       });
       expect(result).toBe(mockVariant);
     });
