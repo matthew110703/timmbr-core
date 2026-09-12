@@ -8,11 +8,11 @@ model ProductVariant {
   id             String        @id @default(uuid())
   productId      String
   sku            String        @unique
-  price          Float
+  price          Decimal
   isDefault      Boolean       @default(false)
   status         VariantStatus @default(ACTIVE)
   currency       String        @default("INR")
-  compareAtPrice Float?
+  compareAtPrice Decimal?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -21,4 +21,5 @@ model ProductVariant {
   inventory       Inventory?
   images          ProductImage[]
   attributeValues AttributeValue[]
+  orderItems      OrderItem[]
 }

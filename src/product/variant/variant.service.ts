@@ -98,9 +98,13 @@ export class VariantService {
       }
     }
 
-    const effectivePrice = dto.price !== undefined ? dto.price : existingVariant.price;
+    const effectivePrice = dto.price !== undefined ? dto.price : Number(existingVariant.price);
     const effectiveCompareAtPrice =
-      dto.compareAtPrice !== undefined ? dto.compareAtPrice : existingVariant.compareAtPrice;
+      dto.compareAtPrice !== undefined
+        ? dto.compareAtPrice
+        : existingVariant.compareAtPrice !== null && existingVariant.compareAtPrice !== undefined
+          ? Number(existingVariant.compareAtPrice)
+          : null;
 
     if (
       effectiveCompareAtPrice !== null &&

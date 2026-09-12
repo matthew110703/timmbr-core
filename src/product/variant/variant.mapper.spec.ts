@@ -1,4 +1,4 @@
-import { ProductVariant, VariantStatus } from '@prisma/client';
+import { Prisma, ProductVariant, VariantStatus } from '@prisma/client';
 import { VariantMapper } from './variant.mapper';
 
 describe('VariantMapper', () => {
@@ -6,8 +6,8 @@ describe('VariantMapper', () => {
     id: '22222222-2222-2222-2222-222222222222',
     productId: '11111111-1111-1111-1111-111111111111',
     sku: 'OAK-001',
-    price: 25000,
-    compareAtPrice: 30000,
+    price: new Prisma.Decimal(25000),
+    compareAtPrice: new Prisma.Decimal(30000),
     currency: 'INR',
     status: VariantStatus.ACTIVE,
     isDefault: true,

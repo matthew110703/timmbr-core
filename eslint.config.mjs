@@ -61,9 +61,15 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/config/env.ts', 'test/jest-setup.ts'],
+    files: ['src/config/env.ts', 'test/jest-setup.ts', 'prisma.config.ts'],
     rules: {
       'no-restricted-syntax': 'off',
+    },
+  },
+  {
+    files: ['**/*.spec.ts', '**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/unbound-method': 'off',
     },
   },
 );

@@ -25,3 +25,4 @@ model InventoryTransaction {
   // Relations
   inventory Inventory @relation(fields: [inventoryId], references: [id])
 }
+

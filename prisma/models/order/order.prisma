@@ -1,0 +1,40 @@
+enum OrderStatus {
+  PENDING    // Order created but payment isn't successfully completed.
+  CONFIRMED  // Payment successfully completed.
+  PROCESSING // Order is being prepared.
+  SHIPPED    // Order handed to shipping/fulfillment.
+  DELIVERED  // Customer received the order.
+  CANCELLED  // Order cancelled before fulfillment.
+  RETURNED   // Completed order was returned.
+}
+
+model Order {
+  id                String      @id @default(uuid())
+  userId            String
+  cartId            String?
+  status            OrderStatus @default(PENDING)
+
+  // Pricing snapshot
+  subtotal          Decimal
+  discount          Decimal     @default(0)
+  shippingFee       Decimal     @default(0)
+  tax               Decimal     @default(0)
+  grandTotal        Decimal
+  currency          String      @default("INR")
+
+  // Address reference & immutable checkout snapshot
+  shippingAddressId String?
+  shippingAddress   Json
+
+  expiresAt         DateTime?
+  placedAt          DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  // Relations
+  user              User        @relation(fields: [userId], references: [id])
+  items             OrderItem[]
+  payments          Payment[]
+
+  @@index([status, expiresAt])
+}

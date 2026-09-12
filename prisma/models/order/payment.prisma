@@ -1,0 +1,38 @@
+enum PaymentProvider {
+  RAZORPAY
+  // Add others when needed
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+model Payment {
+  id                String          @id @default(uuid())
+  orderId           String
+
+  provider          PaymentProvider
+
+  providerOrderId   String?
+  providerPaymentId String?
+
+  amount            Decimal
+  currency          String          @default("INR")
+
+  status            PaymentStatus   @default(PENDING)
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  // Relations
+  order             Order           @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+  @@index([providerOrderId])
+}

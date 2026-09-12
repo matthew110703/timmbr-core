@@ -11,7 +11,7 @@ export class ProductMapper {
       shortDescription: product.shortDescription,
       status: product.status,
       hsnCode: product.hsnCode ?? null,
-      gstRate: product.gstRate,
+      gstRate: Number(product.gstRate),
       brandId: product.brandId ?? null,
       categoryId: product.categoryId,
       createdAt: product.createdAt,

@@ -14,6 +14,7 @@ import { env } from './config/env';
 import { APP_CONFIG } from './config/app.config';
 import helmet from '@fastify/helmet';
 import fastifyCookie from '@fastify/cookie';
+import { registerRawBodyHook } from './common/hooks/raw-body.hook';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
 async function bootstrap() {
@@ -23,14 +24,16 @@ async function bootstrap() {
   app.useLogger(app.get(Logger));
   global.logger = app.get(Logger);
 
+  const fastifyInstance = app.getHttpAdapter().getInstance();
+
+  // Preserve raw request body for webhook signature verification
+  registerRawBodyHook(fastifyInstance);
+
   // Capture response body for structured logging (attached to req.raw.__resBody)
-  app
-    .getHttpAdapter()
-    .getInstance()
-    .addHook('onSend', (request, _reply, payload: string, done) => {
-      (request.raw as { __resBody?: string }).__resBody = payload;
-      done(null, payload);
-    });
+  fastifyInstance.addHook('onSend', (request, _reply, payload: string, done) => {
+    (request.raw as { __resBody?: string }).__resBody = payload;
+    done(null, payload);
+  });
 
   // Security headers — type cast needed due to pnpm resolving @fastify/helmet against fastify@5.8.4 while we run 5.8.5
   await app.register(helmet as any, { contentSecurityPolicy: false });

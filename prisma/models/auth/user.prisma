@@ -25,4 +25,5 @@ model User {
     // Relations
     providers UserProvider[]
     address Address[]
+    orders Order[]
 }

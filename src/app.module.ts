@@ -23,6 +23,9 @@ import { BrandModule } from './brand/brand.module';
 import { ProductModule } from './product/product.module';
 import { MediaModule } from './media/media.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { PaymentModule } from './payment/payment.module';
+import { OrderModule } from './order/order.module';
+import { WebhookModule } from './webhook/webhook.module';
 
 @Module({
   imports: [
@@ -42,6 +45,9 @@ import { InventoryModule } from './inventory/inventory.module';
     ProductModule,
     MediaModule,
     InventoryModule,
+    PaymentModule,
+    OrderModule,
+    WebhookModule,
   ],
   controllers: [AppController],
   providers: [

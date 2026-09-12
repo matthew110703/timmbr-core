@@ -12,7 +12,7 @@ model Product {
   shortDescription String
   status           ProductStatus @default(DRAFT)
   hsnCode          String?
-  gstRate          Float         @default(18)
+  gstRate          Decimal       @default(18)
   brandId          String?
   categoryId       String
   createdAt        DateTime      @default(now())
@@ -25,4 +25,5 @@ model Product {
   images          ProductImage[]
   attributeValues AttributeValue[]
   attributeDefs   AttributeDefinition[]
+  orderItems      OrderItem[]
 }

@@ -33,11 +33,14 @@ export class VariantMapper {
       id: variant.id,
       productId: variant.productId,
       sku: variant.sku,
-      price: variant.price,
+      price: Number(variant.price),
       isDefault: variant.isDefault,
       status: variant.status,
       currency: variant.currency,
-      compareAtPrice: variant.compareAtPrice ?? null,
+      compareAtPrice:
+        variant.compareAtPrice !== null && variant.compareAtPrice !== undefined
+          ? Number(variant.compareAtPrice)
+          : null,
       availability: {
         status: availabilityStatus,
         quantity: availabilityQuantity,

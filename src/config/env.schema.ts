@@ -31,6 +31,11 @@ export const envSchema = z.object({
   STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
   STORAGE_BUCKET: z.string().optional(),
   STORAGE_PUBLIC_URL: z.string().optional(),
+  RAZORPAY_KEY_ID: z.string().optional(),
+  RAZORPAY_KEY_SECRET: z.string().optional(),
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  ORDER_EXPIRATION_TTL_MINUTES: z.coerce.number().default(15),
+  CRON_SECRET: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
