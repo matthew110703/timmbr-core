@@ -1,0 +1,30 @@
+model Page {
+  id          String        @id @default(uuid())
+  slug        String        @unique
+  title       String
+  description String?
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  sections    PageSection[]
+}
+
+model PageSection {
+  id        String   @id @default(uuid())
+  pageId    String
+  type      String
+  data      Json     @default("{}")
+  order     Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  page      Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  // Constraints
+  @@unique([pageId, type])
+  @@index([pageId, order])
+}

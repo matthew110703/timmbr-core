@@ -26,6 +26,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { PaymentModule } from './payment/payment.module';
 import { OrderModule } from './order/order.module';
 import { WebhookModule } from './webhook/webhook.module';
+import { PageModule } from './page/page.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { WebhookModule } from './webhook/webhook.module';
     PaymentModule,
     OrderModule,
     WebhookModule,
+    PageModule,
   ],
   controllers: [AppController],
   providers: [

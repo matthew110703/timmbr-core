@@ -19,4 +19,5 @@ export const APP_ROUTES = {
   ADDRESSES: 'addresses',
   MEDIA: 'media',
   HEALTH: 'health',
+  PAGES: 'pages',
 } as const;
