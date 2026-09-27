@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   NotFoundException,
@@ -11,6 +12,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MailerService } from '@/mailer/mailer.service';
 import { RedisService } from '@/redis/redis.service';
 import { UserRole, UserStatus } from '@prisma/client';
+import { Application } from '@/common/types/application.types';
 import { User } from '@/common/types/user';
 import { TokenRevokedException } from '@/common/exceptions/token.exception';
 import { AuthService } from './auth.service';
@@ -495,6 +497,62 @@ describe('AuthService', () => {
 
       expect(error).toBeInstanceOf(HttpException);
       expect((error as HttpException).getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
+    });
+  });
+
+  // ─── login & application security ──────────────────────────────────────────
+
+  describe('login', () => {
+    const loginPayload = { email: USER_EMAIL, password: 'Password123!' };
+
+    it('allows ADMIN login when application is ADMIN_CONSOLE', async () => {
+      const adminUser = { ...baseUser, role: UserRole.ADMIN, password: 'hashed_password' };
+      mockAuthRepository.findUserByEmail.mockResolvedValue(adminUser);
+      (argon2.verify as jest.Mock).mockResolvedValue(true);
+      mockJwtService.signAsync.mockResolvedValue('jwt_token');
+      mockRedisService.setWithTTL.mockResolvedValue(undefined);
+
+      const result = await service.login(loginPayload, Application.ADMIN_CONSOLE);
+
+      expect(result.data.accessToken).toBe('jwt_token');
+    });
+
+    it('allows MASTER login when application is ADMIN_CONSOLE', async () => {
+      const masterUser = { ...baseUser, role: UserRole.MASTER, password: 'hashed_password' };
+      mockAuthRepository.findUserByEmail.mockResolvedValue(masterUser);
+      (argon2.verify as jest.Mock).mockResolvedValue(true);
+      mockJwtService.signAsync.mockResolvedValue('jwt_token');
+      mockRedisService.setWithTTL.mockResolvedValue(undefined);
+
+      const result = await service.login(loginPayload, Application.ADMIN_CONSOLE);
+
+      expect(result.data.accessToken).toBe('jwt_token');
+    });
+
+    it('rejects USER (customer) login when application is ADMIN_CONSOLE with ForbiddenException', async () => {
+      const customerUser = { ...baseUser, role: UserRole.USER, password: 'hashed_password' };
+      mockAuthRepository.findUserByEmail.mockResolvedValue(customerUser);
+      (argon2.verify as jest.Mock).mockResolvedValue(true);
+
+      await expect(service.login(loginPayload, Application.ADMIN_CONSOLE)).rejects.toThrow(
+        ForbiddenException,
+      );
+
+      // Verify no tokens were created and no redis key set
+      expect(mockJwtService.signAsync).not.toHaveBeenCalled();
+      expect(mockRedisService.setWithTTL).not.toHaveBeenCalled();
+    });
+
+    it('allows USER (customer) login when application is STOREFRONT', async () => {
+      const customerUser = { ...baseUser, role: UserRole.USER, password: 'hashed_password' };
+      mockAuthRepository.findUserByEmail.mockResolvedValue(customerUser);
+      (argon2.verify as jest.Mock).mockResolvedValue(true);
+      mockJwtService.signAsync.mockResolvedValue('jwt_token');
+      mockRedisService.setWithTTL.mockResolvedValue(undefined);
+
+      const result = await service.login(loginPayload, Application.STOREFRONT);
+
+      expect(result.data.accessToken).toBe('jwt_token');
     });
   });
 });

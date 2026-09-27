@@ -1,5 +1,6 @@
 import { APP_ROUTES } from '@/app.routes';
-import { Public, ResponseMessage } from '@/common/decorators';
+import { CurrentApplication, Public, ResponseMessage } from '@/common/decorators';
+import { Application } from '@/common/types/application.types';
 import {
   Body,
   Controller,
@@ -48,8 +49,8 @@ export class AuthController {
   @HttpCode(200)
   @UseInterceptors(LoginInterceptor)
   @ResponseMessage('Login successful.')
-  login(@Body() dto: LoginPayloadDto) {
-    return this.auth.login(dto);
+  login(@Body() dto: LoginPayloadDto, @CurrentApplication() application?: Application) {
+    return this.auth.login(dto, application);
   }
 
   @Post(AUTH_ROUTES.REFRESH)

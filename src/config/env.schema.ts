@@ -4,6 +4,8 @@ export const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   NODE_ENV: z.enum(['dev', 'prod', 'test']).default('dev'),
   DATABASE_URL: z.string(),
+  STOREFRONT_ORIGIN: z.string().default('http://localhost:3000'),
+  ADMIN_CONSOLE_ORIGIN: z.string().default('http://localhost:5000'),
   ALLOWED_ORIGIN: z.string().optional(),
   JWT_ACCESS_SECRET: z.string(),
   JWT_ACCESS_EXPIRES_IN: z

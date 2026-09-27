@@ -75,7 +75,7 @@ describe('AuthController', () => {
 
       const result = await controller.login(dto);
 
-      expect(mockAuthService.login).toHaveBeenCalledWith(dto);
+      expect(mockAuthService.login).toHaveBeenCalledWith(dto, undefined);
       expect(result).toBe(expected);
     });
   });

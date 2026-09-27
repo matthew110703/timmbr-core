@@ -1,3 +1,4 @@
+import { UserRole } from '@prisma/client';
 import { IsEmail, IsNotEmpty, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { passwordRegex } from './sign-up-dto';
@@ -21,5 +22,6 @@ export class LoginResponseDto {
   id!: string;
   name!: string;
   email!: string;
+  role!: UserRole;
   emailVerified!: boolean;
 }

@@ -45,6 +45,7 @@ export class AuthMapper {
         id: user.id,
         name: user.name,
         email: user.email,
+        role: user.role,
         emailVerified: user.emailVerified,
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,

@@ -5,13 +5,15 @@ import { User, UserProvider } from '@/common/types/user';
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   Injectable,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { OAuthType, UserStatus } from '@prisma/client';
+import { OAuthType, UserRole, UserStatus } from '@prisma/client';
+import { Application } from '@/common/types/application.types';
 
 export interface OAuthLoginResult {
   user: User & { providers: UserProvider[] };
@@ -127,7 +129,7 @@ export class AuthService {
     return { user: finalUser, tokens };
   }
 
-  async login(payload: LoginPayloadDto) {
+  async login(payload: LoginPayloadDto, application?: Application) {
     const user = await this.findUserByEmail(payload.email);
 
     if (!user) {
@@ -142,6 +144,15 @@ export class AuthService {
 
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials.');
+    }
+
+    // Origin/Application security: prevent customer accounts from logging into Admin Console
+    if (application === Application.ADMIN_CONSOLE) {
+      if (user.role !== UserRole.ADMIN && user.role !== UserRole.MASTER) {
+        throw new ForbiddenException(
+          'Access denied. Only administrative accounts may sign in to the Admin Console.',
+        );
+      }
     }
 
     const tokens = await this.generateJwtTokens(user);

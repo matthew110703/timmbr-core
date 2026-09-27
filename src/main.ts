@@ -43,9 +43,25 @@ async function bootstrap() {
     secret: env.COOKIE_SECRET,
   });
 
-  // CORS
+  // CORS — synchronized with centralized application origin settings
+  const parseOrigins = (str?: string) =>
+    str
+      ? str
+          .split(',')
+          .map((o) => o.trim())
+          .filter(Boolean)
+      : [];
+
+  const corsOrigins = Array.from(
+    new Set([
+      ...parseOrigins(env.STOREFRONT_ORIGIN),
+      ...parseOrigins(env.ADMIN_CONSOLE_ORIGIN),
+      ...parseOrigins(env.ALLOWED_ORIGIN),
+    ]),
+  );
+
   app.enableCors({
-    origin: env.ALLOWED_ORIGIN ?? '*',
+    origin: corsOrigins.length > 0 ? corsOrigins : '*',
     credentials: true,
   });
 
