@@ -11,12 +11,14 @@ import {
   OrderNotFoundException,
 } from '@/common/exceptions/order.exception';
 import { OrderStatus, PaymentProvider, PaymentStatus } from '@prisma/client';
+import { CartRepository } from '@/cart/cart.repository';
 
 describe('OrderService', () => {
   let service: OrderService;
   let orderRepository: jest.Mocked<OrderRepository>;
   let orderPricingService: jest.Mocked<OrderPricingService>;
   let razorpayService: jest.Mocked<RazorpayService>;
+  let cartRepository: jest.Mocked<CartRepository>;
   let mockTx: any;
 
   const mockOrder: any = {
@@ -147,6 +149,10 @@ describe('OrderService', () => {
       findByOrderId: jest.fn(),
     };
 
+    const mockCartRepo = {
+      findActiveCartByUserId: jest.fn().mockResolvedValue(null),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrderService,
@@ -155,6 +161,7 @@ describe('OrderService', () => {
         { provide: OrderPricingService, useValue: mockPricingService },
         { provide: RazorpayService, useValue: mockRazorpay },
         { provide: PaymentRepository, useValue: mockPaymentRepo },
+        { provide: CartRepository, useValue: mockCartRepo },
       ],
     }).compile();
 
@@ -162,6 +169,7 @@ describe('OrderService', () => {
     orderRepository = module.get(OrderRepository);
     orderPricingService = module.get(OrderPricingService);
     razorpayService = module.get(RazorpayService);
+    cartRepository = module.get(CartRepository);
   });
 
   describe('createOrder', () => {
@@ -188,6 +196,25 @@ describe('OrderService', () => {
       expect(result.order.id).toBe('order-uuid-1');
       expect(result.payment.razorpayOrderId).toBe('order_rzp_123');
       expect(result.payment.razorpayKeyId).toBe('rzp_test_key');
+    });
+
+    it('links active cart id when active cart exists for user', async () => {
+      cartRepository.findActiveCartByUserId.mockResolvedValueOnce({
+        id: 'cart-uuid-active',
+      } as any);
+
+      await service.createOrder('user-uuid-1', {
+        shippingAddressId: 'addr-uuid-1',
+        items: [{ variantId: 'var-uuid-1', quantity: 1 }],
+      });
+
+      expect(mockTx.order.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            cartId: 'cart-uuid-active',
+          }),
+        }),
+      );
     });
   });
 
