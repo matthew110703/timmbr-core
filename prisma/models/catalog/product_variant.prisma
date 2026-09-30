@@ -22,4 +22,5 @@ model ProductVariant {
   images          ProductImage[]
   attributeValues AttributeValue[]
   orderItems      OrderItem[]
+  cartItems       CartItem[]
 }

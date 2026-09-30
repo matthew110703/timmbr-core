@@ -26,4 +26,5 @@ model User {
     providers UserProvider[]
     address Address[]
     orders Order[]
+    carts Cart[]
 }

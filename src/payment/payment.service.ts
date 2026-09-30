@@ -6,7 +6,7 @@ import { VerifyPaymentDto } from './dto/verify-payment.dto';
 import { PaymentResponseDto } from './dto/payment-response.dto';
 import { PaymentMapper } from './payment.mapper';
 import { PaymentNotFoundException } from '@/common/exceptions/payment.exception';
-import { InventoryTransactionType, OrderStatus, PaymentStatus } from '@prisma/client';
+import { CartStatus, InventoryTransactionType, OrderStatus, PaymentStatus } from '@prisma/client';
 
 export interface VerifyPaymentResult {
   payment: PaymentResponseDto;
@@ -104,6 +104,14 @@ export class PaymentService {
             });
           }
         }
+      }
+
+      // d. Atomically convert associated Cart if present
+      if (updatedOrder.cartId) {
+        await tx.cart.update({
+          where: { id: updatedOrder.cartId },
+          data: { status: CartStatus.CONVERTED },
+        });
       }
 
       return paidPayment;

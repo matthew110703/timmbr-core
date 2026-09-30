@@ -1,7 +1,8 @@
-import { ExecutionContext, Injectable } from '@nestjs/common';
+import { ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 import { Observable } from 'rxjs';
+import { IS_OPTIONAL_AUTH_KEY } from '@/common/decorators/optional-auth.decorator';
 
 @Injectable()
 export class AccessTokenGuard extends AuthGuard('jwt') {
@@ -18,5 +19,31 @@ export class AccessTokenGuard extends AuthGuard('jwt') {
     if (isPublic) return true;
 
     return super.canActivate(context);
+  }
+
+  handleRequest<TUser = unknown>(
+    err: unknown,
+    user: TUser,
+    _info: unknown,
+    context: ExecutionContext,
+  ): TUser | null {
+    const isOptional = this.reflector.getAllAndOverride<boolean>(IS_OPTIONAL_AUTH_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (isOptional) {
+      if (err || !user) {
+        return null;
+      }
+      return user;
+    }
+
+    if (err || !user) {
+      if (err instanceof Error) throw err;
+      throw new UnauthorizedException('Authentication required');
+    }
+
+    return user;
   }
 }

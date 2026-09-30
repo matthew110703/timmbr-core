@@ -25,6 +25,7 @@ import { ProductModule } from './product/product.module';
 import { MediaModule } from './media/media.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { PaymentModule } from './payment/payment.module';
+import { CartModule } from './cart/cart.module';
 import { OrderModule } from './order/order.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { PageModule } from './page/page.module';
@@ -48,6 +49,7 @@ import { PageModule } from './page/page.module';
     MediaModule,
     InventoryModule,
     PaymentModule,
+    CartModule,
     OrderModule,
     WebhookModule,
     PageModule,

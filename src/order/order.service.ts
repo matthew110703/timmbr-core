@@ -5,6 +5,7 @@ import { OrderPricingService } from './order-pricing.service';
 import { RazorpayService } from '@/payment/razorpay.service';
 import { PaymentRepository } from '@/payment/payment.repository';
 import { env } from '@/config/env';
+import { CartRepository } from '@/cart/cart.repository';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CheckoutQuoteDto } from './dto/checkout-quote.dto';
 import { QuoteResponseDto } from './dto/quote-response.dto';
@@ -47,6 +48,7 @@ export class OrderService {
     private readonly orderPricingService: OrderPricingService,
     private readonly razorpayService: RazorpayService,
     private readonly paymentRepository: PaymentRepository,
+    private readonly cartRepository: CartRepository,
   ) {}
 
   async getQuote(userId: string, dto: CheckoutQuoteDto): Promise<QuoteResponseDto> {
@@ -67,6 +69,7 @@ export class OrderService {
         dto.shippingAddressId,
       );
 
+    const activeCart = await this.cartRepository.findActiveCartByUserId(userId);
     const expiresAt = calculateOrderExpiration(env.ORDER_EXPIRATION_TTL_MINUTES ?? 15);
 
     // 2. Transactionally reserve inventory, create Order and OrderItems
@@ -87,6 +90,7 @@ export class OrderService {
       return tx.order.create({
         data: {
           userId,
+          cartId: activeCart?.id ?? null,
           status: OrderStatus.PENDING,
           expiresAt,
           subtotal: pricing.subtotal,
