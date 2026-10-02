@@ -38,6 +38,7 @@ export const envSchema = z.object({
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
   ORDER_EXPIRATION_TTL_MINUTES: z.coerce.number().default(15),
   GUEST_CART_TTL_DAYS: z.coerce.number().default(7),
+  CACHE_TTL_SECONDS: z.coerce.number().default(120),
   CRON_SECRET: z.string().optional(),
 });
 

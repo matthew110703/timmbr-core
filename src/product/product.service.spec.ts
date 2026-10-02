@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ProductStatus, VariantStatus } from '@prisma/client';
+import { ProductStatus } from '@prisma/client';
 import { ProductService } from './product.service';
 import { ProductRepository } from './product.repository';
 import { CategoryRepository } from '@/category/category.repository';
@@ -10,6 +10,9 @@ import {
 } from '@/common/exceptions/product.exception';
 import { CategoryNotFoundException } from '@/common/exceptions/category.exception';
 import { BrandNotFoundException } from '@/common/exceptions/brand.exception';
+
+import { AttributeValueService } from './attribute/services/attribute-value.service';
+import { ProductCacheService } from './cache/product-cache.service';
 
 const PRODUCT_ID_1 = '11111111-1111-1111-1111-111111111111';
 const CATEGORY_ID_1 = '22222222-2222-2222-2222-222222222222';
@@ -34,6 +37,9 @@ const mockProductRepository = {
   findById: jest.fn(),
   findBySlug: jest.fn(),
   findFirst: jest.fn(),
+  findFirstWithDetails: jest.fn(),
+  findByIdWithDetails: jest.fn(),
+  findBySlugWithDetails: jest.fn(),
   findPaginated: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
@@ -46,6 +52,16 @@ const mockCategoryRepository = {
 
 const mockBrandRepository = {
   findById: jest.fn(),
+};
+
+const mockAttributeValueService = {
+  getFilterMetadata: jest.fn(),
+};
+
+const mockProductCacheService = {
+  get: jest.fn().mockReturnValue(null),
+  set: jest.fn(),
+  invalidate: jest.fn(),
 };
 
 describe('ProductService', () => {
@@ -61,6 +77,8 @@ describe('ProductService', () => {
         { provide: ProductRepository, useValue: mockProductRepository },
         { provide: CategoryRepository, useValue: mockCategoryRepository },
         { provide: BrandRepository, useValue: mockBrandRepository },
+        { provide: AttributeValueService, useValue: mockAttributeValueService },
+        { provide: ProductCacheService, useValue: mockProductCacheService },
       ],
     }).compile();
 
@@ -200,69 +218,75 @@ describe('ProductService', () => {
 
   describe('getProductById', () => {
     it('returns product by id', async () => {
-      mockProductRepository.findFirst.mockResolvedValue(mockProduct);
+      mockProductRepository.findByIdWithDetails.mockResolvedValue(mockProduct);
 
       const result = await service.getProductById(PRODUCT_ID_1);
 
-      expect(mockProductRepository.findFirst).toHaveBeenCalledWith({ id: PRODUCT_ID_1 });
+      expect(mockProductRepository.findByIdWithDetails).toHaveBeenCalledWith(PRODUCT_ID_1, false);
       expect(result.id).toBe(PRODUCT_ID_1);
     });
 
     it('throws ProductNotFoundException if product not found', async () => {
-      mockProductRepository.findFirst.mockResolvedValue(null);
+      mockProductRepository.findByIdWithDetails.mockResolvedValue(null);
 
       await expect(service.getProductById(PRODUCT_ID_1)).rejects.toThrow(ProductNotFoundException);
     });
 
-    it('filters by active status and visible variants when onlyActive is true', async () => {
-      mockProductRepository.findFirst.mockResolvedValue(mockProduct);
-
-      await service.getProductById(PRODUCT_ID_1, true);
-
-      expect(mockProductRepository.findFirst).toHaveBeenCalledWith({
-        id: PRODUCT_ID_1,
-        status: ProductStatus.ACTIVE,
-        variants: {
-          some: {
-            status: VariantStatus.ACTIVE,
-          },
-        },
+    it('throws ProductNotFoundException when onlyActive is true but product status is not active', async () => {
+      mockProductRepository.findByIdWithDetails.mockResolvedValue({
+        ...mockProduct,
+        status: ProductStatus.DRAFT,
       });
+
+      await expect(service.getProductById(PRODUCT_ID_1, true)).rejects.toThrow(
+        ProductNotFoundException,
+      );
     });
   });
 
   describe('getProductBySlug', () => {
     it('returns product by slug', async () => {
-      mockProductRepository.findFirst.mockResolvedValue(mockProduct);
+      mockProductRepository.findBySlugWithDetails.mockResolvedValue(mockProduct);
 
       const result = await service.getProductBySlug('oak-dining-table');
 
-      expect(mockProductRepository.findFirst).toHaveBeenCalledWith({ slug: 'oak-dining-table' });
+      expect(mockProductRepository.findBySlugWithDetails).toHaveBeenCalledWith(
+        'oak-dining-table',
+        false,
+      );
       expect(result.slug).toBe('oak-dining-table');
     });
 
     it('throws ProductNotFoundException if slug not found', async () => {
-      mockProductRepository.findFirst.mockResolvedValue(null);
+      mockProductRepository.findBySlugWithDetails.mockResolvedValue(null);
 
       await expect(service.getProductBySlug('unknown-slug')).rejects.toThrow(
         ProductNotFoundException,
       );
     });
 
-    it('filters by active status and visible variants when onlyActive is true', async () => {
-      mockProductRepository.findFirst.mockResolvedValue(mockProduct);
-
-      await service.getProductBySlug('oak-dining-table', true);
-
-      expect(mockProductRepository.findFirst).toHaveBeenCalledWith({
-        slug: 'oak-dining-table',
-        status: ProductStatus.ACTIVE,
-        variants: {
-          some: {
-            status: VariantStatus.ACTIVE,
-          },
-        },
+    it('throws ProductNotFoundException when onlyActive is true but product status is not active', async () => {
+      mockProductRepository.findBySlugWithDetails.mockResolvedValue({
+        ...mockProduct,
+        status: ProductStatus.DRAFT,
       });
+
+      await expect(service.getProductBySlug('oak-dining-table', true)).rejects.toThrow(
+        ProductNotFoundException,
+      );
+    });
+  });
+
+  describe('getFilterMetadata', () => {
+    it('delegates to attributeValueService.getFilterMetadata', async () => {
+      mockAttributeValueService.getFilterMetadata.mockResolvedValue([
+        { name: 'Color', type: 'STRING', options: [{ value: 'Black', count: 5 }] },
+      ]);
+
+      const result = await service.getFilterMetadata();
+      expect(mockAttributeValueService.getFilterMetadata).toHaveBeenCalled();
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe('Color');
     });
   });
 

@@ -16,6 +16,8 @@ import { CategoryNotFoundException } from '@/common/exceptions/category.exceptio
 import { BrandNotFoundException } from '@/common/exceptions/brand.exception';
 import { generateSlug } from '@/common/utils/helpers';
 import { PaginatedResult } from '@/common/types/api-response.types';
+import { AttributeValueService } from './attribute/services/attribute-value.service';
+import { ProductCacheService } from './cache/product-cache.service';
 
 @Injectable()
 export class ProductService {
@@ -23,6 +25,8 @@ export class ProductService {
     private readonly productRepository: ProductRepository,
     private readonly categoryRepository: CategoryRepository,
     private readonly brandRepository: BrandRepository,
+    private readonly attributeValueService: AttributeValueService,
+    private readonly cacheService: ProductCacheService,
   ) {}
 
   async create(dto: CreateProductDto): Promise<ProductResponseDto> {
@@ -113,6 +117,11 @@ export class ProductService {
       ...(dto.categoryId && { categoryId: dto.categoryId }),
     });
 
+    this.invalidateProductCache(productId, existingProduct.slug);
+    if (slug) {
+      this.invalidateProductCache(productId, slug);
+    }
+
     return ProductMapper.toResponse(product);
   }
 
@@ -162,48 +171,58 @@ export class ProductService {
     };
   }
 
+  invalidateProductCache(productId?: string, slug?: string): void {
+    this.cacheService.invalidate(productId, slug);
+  }
+
   async getProductById(productId: string, onlyActive = false): Promise<ProductResponseDto> {
-    const product = await this.productRepository.findFirst({
-      id: productId,
-      ...(onlyActive
-        ? {
-            status: ProductStatus.ACTIVE,
-            variants: {
-              some: {
-                status: VariantStatus.ACTIVE,
-              },
-            },
-          }
-        : {}),
-    });
+    const cacheKey = `id:${productId}:${onlyActive}`;
+    const cached = this.cacheService.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const product = await this.productRepository.findByIdWithDetails(productId, onlyActive);
 
     if (!product) {
       throw new ProductNotFoundException();
     }
 
-    return ProductMapper.toResponse(product);
+    if (onlyActive && product.status !== ProductStatus.ACTIVE) {
+      throw new ProductNotFoundException();
+    }
+
+    const response = ProductMapper.toResponse(product);
+    this.cacheService.set(product.id, product.slug, onlyActive, response);
+
+    return response;
   }
 
   async getProductBySlug(slug: string, onlyActive = false): Promise<ProductResponseDto> {
-    const product = await this.productRepository.findFirst({
-      slug,
-      ...(onlyActive
-        ? {
-            status: ProductStatus.ACTIVE,
-            variants: {
-              some: {
-                status: VariantStatus.ACTIVE,
-              },
-            },
-          }
-        : {}),
-    });
+    const cacheKey = `slug:${slug}:${onlyActive}`;
+    const cached = this.cacheService.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const product = await this.productRepository.findBySlugWithDetails(slug, onlyActive);
 
     if (!product) {
       throw new ProductNotFoundException();
     }
 
-    return ProductMapper.toResponse(product);
+    if (onlyActive && product.status !== ProductStatus.ACTIVE) {
+      throw new ProductNotFoundException();
+    }
+
+    const response = ProductMapper.toResponse(product);
+    this.cacheService.set(product.id, product.slug, onlyActive, response);
+
+    return response;
+  }
+
+  async getFilterMetadata() {
+    return this.attributeValueService.getFilterMetadata();
   }
 
   async delete(productId: string): Promise<ProductResponseDto> {
@@ -212,6 +231,8 @@ export class ProductService {
     if (!existingProduct) {
       throw new ProductNotFoundException();
     }
+
+    this.invalidateProductCache(productId, existingProduct.slug);
 
     const product = await this.productRepository.delete(productId);
 

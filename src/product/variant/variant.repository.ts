@@ -7,17 +7,27 @@ import { ProductVariantWithInventory } from './variant.mapper';
 export class VariantRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  private readonly variantInclude = {
+    inventory: true,
+    attributeValues: {
+      include: {
+        definition: true,
+      },
+      orderBy: { createdAt: 'asc' as const },
+    },
+  };
+
   async findById(id: string): Promise<ProductVariantWithInventory | null> {
     return this.prisma.productVariant.findUnique({
       where: { id },
-      include: { inventory: true },
+      include: this.variantInclude,
     });
   }
 
   async findBySku(sku: string): Promise<ProductVariantWithInventory | null> {
     return this.prisma.productVariant.findUnique({
       where: { sku },
-      include: { inventory: true },
+      include: this.variantInclude,
     });
   }
 
@@ -26,7 +36,7 @@ export class VariantRepository {
   ): Promise<ProductVariantWithInventory | null> {
     return this.prisma.productVariant.findFirst({
       where,
-      include: { inventory: true },
+      include: this.variantInclude,
     });
   }
 
@@ -37,7 +47,7 @@ export class VariantRepository {
     return this.prisma.productVariant.findMany({
       where,
       orderBy,
-      include: { inventory: true },
+      include: this.variantInclude,
     });
   }
 
@@ -56,7 +66,7 @@ export class VariantRepository {
         skip: (page - 1) * limit,
         take: limit,
         orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
-        include: { inventory: true },
+        include: this.variantInclude,
       }),
       this.prisma.productVariant.count({ where }),
     ]);

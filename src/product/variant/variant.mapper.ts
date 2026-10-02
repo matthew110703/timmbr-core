@@ -1,12 +1,29 @@
-import { Inventory, ProductVariant, VariantStatus } from '@prisma/client';
+import {
+  AttributeDefinition,
+  AttributeValue,
+  Inventory,
+  ProductVariant,
+  VariantStatus,
+} from '@prisma/client';
 import { VariantAvailabilityStatus, VariantResponseDto } from './dto/variant-response.dto';
+import { AttributeMapper } from '../attribute/mappers/attribute.mapper';
 
 export type ProductVariantWithInventory = ProductVariant & {
   inventory?: Inventory | null;
+  attributeValues?: (AttributeValue & { definition: AttributeDefinition })[];
 };
 
 export class VariantMapper {
-  static toResponse(variant: ProductVariantWithInventory): VariantResponseDto {
+  static toResponse(
+    variant: ProductVariantWithInventory,
+    explicitAttributes?: Record<string, string | number | string[]>,
+  ): VariantResponseDto {
+    const attributes =
+      explicitAttributes ??
+      (variant.attributeValues
+        ? AttributeMapper.toVariantAttributeMap(variant.attributeValues)
+        : undefined);
+
     const availableQty = Math.max(
       0,
       (variant.inventory?.quantity ?? 0) - (variant.inventory?.reservedQuantity ?? 0),
@@ -45,6 +62,7 @@ export class VariantMapper {
         status: availabilityStatus,
         quantity: availabilityQuantity,
       },
+      ...(attributes && { attributes }),
       createdAt: variant.createdAt,
       updatedAt: variant.updatedAt,
     };

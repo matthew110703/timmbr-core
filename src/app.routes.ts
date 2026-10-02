@@ -20,4 +20,5 @@ export const APP_ROUTES = {
   MEDIA: 'media',
   HEALTH: 'health',
   PAGES: 'pages',
+  ATTRIBUTE_DEFINITIONS: 'attribute-definitions',
 } as const;

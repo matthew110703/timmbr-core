@@ -63,6 +63,16 @@ describe('VariantRepository', () => {
     expect(repository).toBeDefined();
   });
 
+  const expectedVariantInclude = {
+    inventory: true,
+    attributeValues: {
+      include: {
+        definition: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    },
+  };
+
   describe('findById', () => {
     it('delegates to prisma.productVariant.findUnique with inventory included', async () => {
       mockPrismaService.productVariant.findUnique.mockResolvedValue(mockVariant);
@@ -71,7 +81,7 @@ describe('VariantRepository', () => {
 
       expect(mockPrismaService.productVariant.findUnique).toHaveBeenCalledWith({
         where: { id: VARIANT_ID_1 },
-        include: { inventory: true },
+        include: expectedVariantInclude,
       });
       expect(result).toBe(mockVariant);
     });
@@ -85,7 +95,7 @@ describe('VariantRepository', () => {
 
       expect(mockPrismaService.productVariant.findUnique).toHaveBeenCalledWith({
         where: { sku: 'OAK-TABLE-001' },
-        include: { inventory: true },
+        include: expectedVariantInclude,
       });
       expect(result).toBe(mockVariant);
     });
@@ -100,7 +110,7 @@ describe('VariantRepository', () => {
 
       expect(mockPrismaService.productVariant.findFirst).toHaveBeenCalledWith({
         where,
-        include: { inventory: true },
+        include: expectedVariantInclude,
       });
       expect(result).toBe(mockVariant);
     });
@@ -116,7 +126,7 @@ describe('VariantRepository', () => {
       expect(mockPrismaService.productVariant.findMany).toHaveBeenCalledWith({
         where,
         orderBy: { createdAt: 'asc' },
-        include: { inventory: true },
+        include: expectedVariantInclude,
       });
       expect(result).toEqual([mockVariant]);
     });
