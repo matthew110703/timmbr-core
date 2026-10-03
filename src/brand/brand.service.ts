@@ -76,6 +76,10 @@ export class BrandService {
 
     const where: Prisma.BrandWhereInput = {
       ...(onlyActive ? { status: BrandStatus.ACTIVE } : query.status && { status: query.status }),
+      ...(query.brandIds?.length && { id: { in: query.brandIds } }),
+      ...(query.search && {
+        name: { contains: query.search, mode: 'insensitive' },
+      }),
     };
 
     const [brands, total] = await this.brandRepository.findPaginated(where, page, limit);

@@ -13,6 +13,7 @@ import { BrandNotFoundException } from '@/common/exceptions/brand.exception';
 
 import { AttributeValueService } from './attribute/services/attribute-value.service';
 import { ProductCacheService } from './cache/product-cache.service';
+import { MediaService } from '@/media/media.service';
 
 const PRODUCT_ID_1 = '11111111-1111-1111-1111-111111111111';
 const CATEGORY_ID_1 = '22222222-2222-2222-2222-222222222222';
@@ -64,12 +65,19 @@ const mockProductCacheService = {
   invalidate: jest.fn(),
 };
 
+const mockMediaService = {
+  getPublicUrl: jest.fn().mockImplementation((key: string) => `https://cdn.example.com/${key}`),
+};
+
 describe('ProductService', () => {
   let service: ProductService;
 
   beforeEach(async () => {
     mockCategoryRepository.findById.mockResolvedValue({ id: CATEGORY_ID_1, name: 'Furniture' });
     mockBrandRepository.findById.mockResolvedValue({ id: BRAND_ID_1, name: 'IKEA' });
+    mockMediaService.getPublicUrl.mockImplementation(
+      (key: string) => `https://cdn.example.com/${key}`,
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -79,6 +87,7 @@ describe('ProductService', () => {
         { provide: BrandRepository, useValue: mockBrandRepository },
         { provide: AttributeValueService, useValue: mockAttributeValueService },
         { provide: ProductCacheService, useValue: mockProductCacheService },
+        { provide: MediaService, useValue: mockMediaService },
       ],
     }).compile();
 
@@ -213,6 +222,101 @@ describe('ProductService', () => {
         1,
         10,
       );
+    });
+
+    it('filters by productIds, categoryIds, and brandIds when provided', async () => {
+      mockProductRepository.findPaginated.mockResolvedValue([[mockProduct], 1]);
+
+      await service.getAllProducts({
+        productIds: [PRODUCT_ID_1],
+        categoryIds: [CATEGORY_ID_1],
+        brandIds: [BRAND_ID_1],
+      });
+
+      expect(mockProductRepository.findPaginated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: { in: [PRODUCT_ID_1] },
+          categoryId: { in: [CATEGORY_ID_1] },
+          brandId: { in: [BRAND_ID_1] },
+        }),
+        1,
+        10,
+      );
+    });
+
+    it('maps primary coverImage with public CDN URL', async () => {
+      const productWithImage = {
+        ...mockProduct,
+        images: [
+          {
+            id: 'img-1',
+            storageKey: 'products/111/images/cover.webp',
+            altText: 'Cover photo',
+            sortOrder: 0,
+            isPrimary: true,
+          },
+        ],
+      };
+      mockProductRepository.findPaginated.mockResolvedValue([[productWithImage], 1]);
+
+      const result = await service.getAllProducts({});
+
+      expect(result.data[0].coverImage).toEqual({
+        id: 'img-1',
+        url: 'https://cdn.example.com/products/111/images/cover.webp',
+        altText: 'Cover photo',
+      });
+    });
+
+    it('maps pricing fields from default active variant', async () => {
+      const productWithVariants = {
+        ...mockProduct,
+        variants: [
+          {
+            id: 'var-1',
+            productId: PRODUCT_ID_1,
+            sku: 'SKU-1',
+            price: 24999,
+            compareAtPrice: 29999,
+            currency: 'INR',
+            isDefault: true,
+            status: 'ACTIVE',
+          },
+          {
+            id: 'var-2',
+            productId: PRODUCT_ID_1,
+            sku: 'SKU-2',
+            price: 34999,
+            compareAtPrice: null,
+            currency: 'INR',
+            isDefault: false,
+            status: 'ACTIVE',
+          },
+        ],
+      };
+      mockProductRepository.findPaginated.mockResolvedValue([[productWithVariants], 1]);
+
+      const result = await service.getAllProducts({});
+
+      expect(result.data[0].price).toBe(24999);
+      expect(result.data[0].compareAtPrice).toBe(29999);
+      expect(result.data[0].currency).toBe('INR');
+      expect(result.data[0].hasMultipleVariants).toBe(true);
+    });
+
+    it('returns null pricing when product has no variants', async () => {
+      const productWithoutVariants = {
+        ...mockProduct,
+        variants: [],
+      };
+      mockProductRepository.findPaginated.mockResolvedValue([[productWithoutVariants], 1]);
+
+      const result = await service.getAllProducts({});
+
+      expect(result.data[0].price).toBeNull();
+      expect(result.data[0].compareAtPrice).toBeNull();
+      expect(result.data[0].currency).toBeNull();
+      expect(result.data[0].hasMultipleVariants).toBe(false);
     });
   });
 

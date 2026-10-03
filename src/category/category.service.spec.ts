@@ -244,6 +244,27 @@ describe('CategoryService', () => {
         10,
       );
     });
+
+    it('filters by categoryIds and search when provided', async () => {
+      const query: GetCategoriesQueryDto = {
+        page: 1,
+        limit: 10,
+        categoryIds: [CAT_ID_1, CAT_ID_2],
+        search: 'Electro',
+      };
+      mockCategoryRepository.findPaginated.mockResolvedValue([[baseCategory], 1]);
+
+      await service.getAllCategories(query);
+
+      expect(mockCategoryRepository.findPaginated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: { in: [CAT_ID_1, CAT_ID_2] },
+          name: { contains: 'Electro', mode: 'insensitive' },
+        }),
+        1,
+        10,
+      );
+    });
   });
 
   // ─── getCategoryById ─────────────────────────────────────────────────────────

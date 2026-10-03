@@ -122,13 +122,35 @@ export class ProductRepository {
     where: Prisma.ProductWhereInput,
     page: number,
     limit: number,
-  ): Promise<[Product[], number]> {
+  ): Promise<[ProductWithDetails[], number]> {
     return this.prisma.$transaction([
       this.prisma.product.findMany({
         where,
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { createdAt: 'desc' },
+        include: {
+          images: {
+            orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
+            take: 1,
+          },
+          variants: {
+            where: { status: VariantStatus.ACTIVE },
+            orderBy: [{ isDefault: 'desc' }, { price: 'asc' }, { createdAt: 'asc' }],
+            select: {
+              id: true,
+              productId: true,
+              sku: true,
+              price: true,
+              compareAtPrice: true,
+              currency: true,
+              isDefault: true,
+              status: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+        },
       }),
       this.prisma.product.count({ where }),
     ]);

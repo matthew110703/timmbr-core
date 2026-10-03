@@ -130,6 +130,10 @@ export class CategoryService {
         ? { status: CategoryStatus.ACTIVE }
         : query.status && { status: query.status }),
       ...(query.parentId && { parentId: query.parentId }),
+      ...(query.categoryIds?.length && { id: { in: query.categoryIds } }),
+      ...(query.search && {
+        name: { contains: query.search, mode: 'insensitive' },
+      }),
     };
 
     const [categories, total] = await this.categoryRepository.findPaginated(where, page, limit);

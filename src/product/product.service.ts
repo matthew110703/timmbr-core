@@ -18,6 +18,7 @@ import { generateSlug } from '@/common/utils/helpers';
 import { PaginatedResult } from '@/common/types/api-response.types';
 import { AttributeValueService } from './attribute/services/attribute-value.service';
 import { ProductCacheService } from './cache/product-cache.service';
+import { MediaService } from '@/media/media.service';
 
 @Injectable()
 export class ProductService {
@@ -27,6 +28,7 @@ export class ProductService {
     private readonly brandRepository: BrandRepository,
     private readonly attributeValueService: AttributeValueService,
     private readonly cacheService: ProductCacheService,
+    private readonly mediaService: MediaService,
   ) {}
 
   async create(dto: CreateProductDto): Promise<ProductResponseDto> {
@@ -64,7 +66,7 @@ export class ProductService {
       categoryId: dto.categoryId,
     });
 
-    return ProductMapper.toResponse(product);
+    return ProductMapper.toResponse(product, this.mediaService);
   }
 
   async update(productId: string, dto: UpdateProductDto): Promise<ProductResponseDto> {
@@ -122,7 +124,7 @@ export class ProductService {
       this.invalidateProductCache(productId, slug);
     }
 
-    return ProductMapper.toResponse(product);
+    return ProductMapper.toResponse(product, this.mediaService);
   }
 
   async getAllProducts(
@@ -143,8 +145,13 @@ export class ProductService {
             },
           }
         : query.status && { status: query.status }),
-      ...(query.categoryId && { categoryId: query.categoryId }),
-      ...(query.brandId && { brandId: query.brandId }),
+      ...(query.productIds?.length && { id: { in: query.productIds } }),
+      ...(query.categoryIds?.length
+        ? { categoryId: { in: query.categoryIds } }
+        : query.categoryId && { categoryId: query.categoryId }),
+      ...(query.brandIds?.length
+        ? { brandId: { in: query.brandIds } }
+        : query.brandId && { brandId: query.brandId }),
       ...(query.search && {
         OR: [
           { title: { contains: query.search, mode: 'insensitive' } },
@@ -159,7 +166,9 @@ export class ProductService {
     const totalPages = Math.ceil(total / limit);
 
     return {
-      data: products.map((product) => ProductMapper.toResponse(product)),
+      data: products.map((product) =>
+        ProductMapper.toResponse(product, this.mediaService, { includeVariants: false }),
+      ),
       meta: {
         page,
         limit,
@@ -192,7 +201,7 @@ export class ProductService {
       throw new ProductNotFoundException();
     }
 
-    const response = ProductMapper.toResponse(product);
+    const response = ProductMapper.toResponse(product, this.mediaService);
     this.cacheService.set(product.id, product.slug, onlyActive, response);
 
     return response;
@@ -215,7 +224,7 @@ export class ProductService {
       throw new ProductNotFoundException();
     }
 
-    const response = ProductMapper.toResponse(product);
+    const response = ProductMapper.toResponse(product, this.mediaService);
     this.cacheService.set(product.id, product.slug, onlyActive, response);
 
     return response;
@@ -236,6 +245,6 @@ export class ProductService {
 
     const product = await this.productRepository.delete(productId);
 
-    return ProductMapper.toResponse(product);
+    return ProductMapper.toResponse(product, this.mediaService);
   }
 }

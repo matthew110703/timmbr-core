@@ -161,6 +161,27 @@ describe('BrandService', () => {
         10,
       );
     });
+
+    it('filters by brandIds and search when provided', async () => {
+      const query: GetBrandsQueryDto = {
+        page: 1,
+        limit: 10,
+        brandIds: [BRAND_ID_1],
+        search: 'Nik',
+      };
+      mockBrandRepository.findPaginated.mockResolvedValue([[mockBrand], 1]);
+
+      await service.getAllBrands(query);
+
+      expect(mockBrandRepository.findPaginated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: { in: [BRAND_ID_1] },
+          name: { contains: 'Nik', mode: 'insensitive' },
+        }),
+        1,
+        10,
+      );
+    });
   });
 
   // ─── getBrandById ─────────────────────────────────────────────────────────────
