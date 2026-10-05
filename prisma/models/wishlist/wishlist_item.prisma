@@ -1,0 +1,16 @@
+model WishlistItem {
+  id         String   @id @default(uuid())
+  wishlistId String
+  productId  String
+  variantId  String
+  createdAt  DateTime @default(now())
+
+  // Relations
+  wishlist Wishlist       @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
+  product  Product        @relation(fields: [productId], references: [id])
+  variant  ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@unique([wishlistId, variantId])
+  @@index([productId])
+  @@index([variantId])
+}

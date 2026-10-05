@@ -23,4 +23,5 @@ model ProductVariant {
   attributeValues AttributeValue[]
   orderItems      OrderItem[]
   cartItems       CartItem[]
+  wishlistItems   WishlistItem[]
 }

@@ -27,4 +27,5 @@ model User {
     address Address[]
     orders Order[]
     carts Cart[]
+    wishlist Wishlist?
 }
