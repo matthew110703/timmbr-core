@@ -22,7 +22,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const reply = ctx.getResponse<FastifyReply>();
     const request = ctx.getRequest<FastifyRequest>();
 
-    const { status, message, errors, code } = this.resolveException(exception);
+    const { status, message, errors, code, details } = this.resolveException(exception);
+
+    reply.header('x-request-id', request.id);
+
+    const retryAfter = details?.retryAfter;
+    if (typeof retryAfter === 'number') {
+      reply.header('Retry-After', String(retryAfter));
+    }
 
     const responseBody = {
       success: false,
@@ -30,15 +37,37 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       code: code ?? resolveCode(status),
       message,
       errors: errors ?? null,
+      ...(details && { details }),
+      requestId: request.id,
       path: request.url,
       method: request.method,
       timestamp: new Date().toISOString(),
     };
 
     if (status >= 500) {
+      const stack =
+        exception instanceof Error
+          ? exception.stack
+          : typeof exception === 'object' && exception !== null && 'stack' in exception
+            ? String((exception as { stack?: unknown }).stack)
+            : undefined;
+
+      const errMessage =
+        code?.toLowerCase() ||
+        (exception instanceof Error
+          ? exception.message.toLowerCase().replace(/[^a-z0-9_]+/g, '_')
+          : 'internal_server_error');
+
       this.logger.error(
-        { err: exception, method: request.method, url: request.url, status },
-        `[${request.method}] ${request.url} -> ${status} | ${message}`,
+        {
+          requestId: request.id,
+          path: request.url,
+          method: request.method,
+          status,
+          stack,
+          err: exception,
+        },
+        errMessage,
       );
     }
 
@@ -50,6 +79,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     message: string;
     errors: Record<string, unknown>[] | null;
     code?: string;
+    details?: Record<string, unknown>;
   } {
     // NestJS HttpException (includes BadRequestException, NotFoundException, etc.)
     if (exception instanceof HttpException) {
@@ -74,6 +104,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
               ? (res.errors as Record<string, unknown>[])
               : null,
           code: customCode,
+          details:
+            typeof res.details === 'object' && res.details !== null
+              ? (res.details as Record<string, unknown>)
+              : undefined,
         };
       }
 

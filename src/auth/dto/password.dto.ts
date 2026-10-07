@@ -1,6 +1,6 @@
-import { IsEmail, IsEnum, IsNotEmpty, IsString, Matches } from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsString } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { passwordRegex } from './sign-up-dto';
+import { IsStrongPassword } from './password-policy';
 import { TokenType } from '../types/token-type.enum';
 
 export class ForgotPasswordDto {
@@ -15,10 +15,7 @@ export class ResetPasswordDto {
   @IsNotEmpty({ message: 'Token is required' })
   token!: string;
 
-  @Matches(passwordRegex, {
-    message:
-      'Password must be at least 8 characters long and contain at least one uppercase letter, one number, and one special character',
-  })
+  @IsStrongPassword()
   newPassword!: string;
 }
 
@@ -36,9 +33,16 @@ export class ChangePasswordDto {
   @IsNotEmpty({ message: 'Current password is required' })
   oldPassword!: string;
 
-  @Matches(passwordRegex, {
-    message:
-      'Password must be at least 8 characters long and contain at least one uppercase letter, one number, and one special character',
-  })
+  @IsStrongPassword()
   newPassword!: string;
+}
+
+/** Set a password after OTP verification (new account, or forgot-password). */
+export class SetPasswordDto {
+  @IsString()
+  @IsNotEmpty({ message: 'Token is required' })
+  token!: string;
+
+  @IsStrongPassword()
+  password!: string;
 }

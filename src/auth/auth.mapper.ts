@@ -1,55 +1,42 @@
-import { MessageResult } from '@/common/types/api-response.types';
+import { UserRole } from '@prisma/client';
 import { User } from '@/common/types/user';
-import { SignUpResponseDto, UserShortDto } from './dto/sign-up-dto';
-import { LoginResponseDto } from './dto/login-dto';
+import { TokenPair } from './token/token.service';
+
+/**
+ * What every successful sign-in returns. Flat for backwards compatibility with
+ * the Admin Console. `refreshToken` is moved into an httpOnly cookie by
+ * SessionCookieInterceptor and never reaches the client body.
+ */
+export interface AuthSession {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  emailVerified: boolean;
+  accessToken: string;
+  refreshToken: string;
+  /** Present on OTP verification: the account was created by this sign-in. */
+  isNewUser?: boolean;
+  hasPassword?: boolean;
+  /** Single-use token for POST /auth/password/set (new account or forgot-password). */
+  passwordSetupToken?: string;
+}
 
 export class AuthMapper {
-  static toSignUpResponse(
+  static toSession(
     user: User,
-    tokens: { accessToken: string; refreshToken: string },
-  ): MessageResult<SignUpResponseDto> {
-    const userDto: UserShortDto = {
+    tokens: TokenPair,
+    extra: Pick<AuthSession, 'isNewUser' | 'hasPassword' | 'passwordSetupToken'> = {},
+  ): AuthSession {
+    return {
       id: user.id,
       name: user.name,
       email: user.email,
+      role: user.role,
       emailVerified: user.emailVerified,
-      linkedProviders: user.providers?.map((x) => x.type) || [],
-      createdAt: user.createdAt,
-    };
-
-    const message = user.emailVerified
-      ? 'Sign up successful.'
-      : 'Sign up successful. Please verify your email.';
-
-    return {
-      message,
-      data: {
-        user: userDto,
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
-      },
-    };
-  }
-
-  static toLoginResponse(
-    user: User,
-    tokens: { accessToken: string; refreshToken: string },
-  ): MessageResult<LoginResponseDto> {
-    const message = user.emailVerified
-      ? 'Login successful. Please verify your email.'
-      : 'Login successful.';
-
-    return {
-      message,
-      data: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        emailVerified: user.emailVerified,
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
-      },
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      ...extra,
     };
   }
 }

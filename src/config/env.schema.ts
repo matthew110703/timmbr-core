@@ -1,11 +1,14 @@
 import z from 'zod';
 
 export const envSchema = z.object({
-  PORT: z.coerce.number().default(3000),
+  PORT: z.coerce.number().default(8000),
   NODE_ENV: z.enum(['dev', 'prod', 'test']).default('dev'),
   DATABASE_URL: z.string(),
+  // Comma-separated origins. The first one is also the app's public URL
+  // (storefront: OAuth popup landing; admin console: password-reset links).
   STOREFRONT_ORIGIN: z.string().default('http://localhost:3000'),
   ADMIN_CONSOLE_ORIGIN: z.string().default('http://localhost:5000'),
+  // Extra CORS origins beyond the two apps above (optional).
   ALLOWED_ORIGIN: z.string().optional(),
   JWT_ACCESS_SECRET: z.string(),
   JWT_ACCESS_EXPIRES_IN: z
@@ -19,11 +22,8 @@ export const envSchema = z.object({
     .default('7d'),
   COOKIE_SECRET: z.string(),
   REDIS_URL: z.string(),
-  REFRESH_TOKEN_TTL: z.coerce.number().default(7 * 24 * 60 * 60),
   RESEND_API_KEY: z.string(),
   MAIL_FROM: z.string(),
-  APP_BASE_URL: z.string(),
-  CLIENT_BASE_URL: z.string(),
   GOOGLE_CLIENT_ID: z.string(),
   GOOGLE_CLIENT_SECRET: z.string(),
   GOOGLE_CALLBACK_URL: z.string(),
@@ -40,6 +40,11 @@ export const envSchema = z.object({
   GUEST_CART_TTL_DAYS: z.coerce.number().default(7),
   CACHE_TTL_SECONDS: z.coerce.number().default(120),
   CRON_SECRET: z.string().optional(),
+  LOG_FORMAT: z.enum(['json', 'pretty']).optional(),
+  // Shared secret for the storefront BFF (server-to-server). Unset = trusted mode off.
+  CORE_INTERNAL_KEY: z.string().min(32).optional(),
+  // Number of trusted proxy hops in front of the API (0 = direct).
+  TRUST_PROXY: z.coerce.number().int().min(0).default(0),
 });
 
 export type Env = z.infer<typeof envSchema>;

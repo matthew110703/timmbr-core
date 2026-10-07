@@ -20,23 +20,28 @@ export class AuthRepository {
     });
   }
 
+  /** Matches any of the stored spellings of one number (see legacyPhoneVariants). */
+  async findUserByPhoneVariants(phones: string[]): Promise<UserWithProviders | null> {
+    return this.prisma.user.findFirst({
+      where: { phone: { in: phones } },
+      include: { providers: true },
+    });
+  }
+
+  async findUserByProvider(
+    type: OAuthType,
+    providerUid: string,
+  ): Promise<UserWithProviders | null> {
+    const link = await this.prisma.userProvider.findUnique({
+      where: { type_providerUid: { type, providerUid } },
+      select: { user: { include: { providers: true } } },
+    });
+    return link?.user ?? null;
+  }
+
   async findUserById(id: string): Promise<User | null> {
     return this.prisma.user.findUnique({
       where: { id },
-    });
-  }
-
-  async findUserByIdWithProviders(id: string): Promise<UserWithProviders | null> {
-    return this.prisma.user.findUnique({
-      where: { id },
-      include: { providers: true },
-    });
-  }
-
-  async findUserByIdOrThrow(id: string): Promise<UserWithProviders> {
-    return this.prisma.user.findUniqueOrThrow({
-      where: { id },
-      include: { providers: true },
     });
   }
 
@@ -50,21 +55,13 @@ export class AuthRepository {
   }
 
   async createOAuthUserAndProvider(
-    userData: Prisma.UserCreateInput | Prisma.UserUncheckedCreateInput,
+    userData: Prisma.UserCreateInput,
     type: OAuthType,
     providerUid: string,
   ): Promise<UserWithProviders> {
-    return this.prisma.$transaction(async (tx) => {
-      const created = await tx.user.create({
-        data: userData,
-      });
-      await tx.userProvider.create({
-        data: { userId: created.id, type, providerUid },
-      });
-      return tx.user.findUniqueOrThrow({
-        where: { id: created.id },
-        include: { providers: true },
-      });
+    return this.prisma.user.create({
+      data: { ...userData, providers: { create: { type, providerUid } } },
+      include: { providers: true },
     });
   }
 
@@ -93,13 +90,6 @@ export class AuthRepository {
     return this.prisma.user.update({
       where: { id },
       data: { lastLoginAt: new Date() },
-    });
-  }
-
-  async updateEmailVerified(id: string): Promise<User> {
-    return this.prisma.user.update({
-      where: { id },
-      data: { emailVerified: true },
     });
   }
 }

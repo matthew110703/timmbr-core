@@ -31,25 +31,20 @@ const mockUserProvider = {
 const mockPrismaService = {
   user: {
     findUnique: jest.fn(),
-    findUniqueOrThrow: jest.fn(),
+    findFirst: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   },
   userProvider: {
-    create: jest.fn(),
+    findUnique: jest.fn(),
     upsert: jest.fn(),
   },
-  $transaction: jest.fn(),
 };
 
 describe('AuthRepository', () => {
   let repository: AuthRepository;
 
   beforeEach(async () => {
-    mockPrismaService.$transaction.mockImplementation(
-      (fn: (tx: typeof mockPrismaService) => unknown) => fn(mockPrismaService),
-    );
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [AuthRepository, { provide: PrismaService, useValue: mockPrismaService }],
     }).compile();
@@ -103,34 +98,6 @@ describe('AuthRepository', () => {
     });
   });
 
-  describe('findUserByIdWithProviders', () => {
-    it('delegates to prisma.user.findUnique with providers', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
-
-      const result = await repository.findUserByIdWithProviders(USER_ID);
-
-      expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
-        where: { id: USER_ID },
-        include: { providers: true },
-      });
-      expect(result).toBe(mockUser);
-    });
-  });
-
-  describe('findUserByIdOrThrow', () => {
-    it('delegates to prisma.user.findUniqueOrThrow', async () => {
-      mockPrismaService.user.findUniqueOrThrow.mockResolvedValue(mockUser);
-
-      const result = await repository.findUserByIdOrThrow(USER_ID);
-
-      expect(mockPrismaService.user.findUniqueOrThrow).toHaveBeenCalledWith({
-        where: { id: USER_ID },
-        include: { providers: true },
-      });
-      expect(result).toBe(mockUser);
-    });
-  });
-
   describe('createEmailUser', () => {
     it('delegates to prisma.user.create with providers', async () => {
       mockPrismaService.user.create.mockResolvedValue(mockUser);
@@ -154,36 +121,6 @@ describe('AuthRepository', () => {
         data: userData,
         include: { providers: true },
       });
-      expect(result).toBe(mockUser);
-    });
-  });
-
-  describe('createOAuthUserAndProvider', () => {
-    it('creates user and provider in transaction', async () => {
-      mockPrismaService.user.create.mockResolvedValue(mockUser);
-      mockPrismaService.userProvider.create.mockResolvedValue(mockUserProvider);
-      mockPrismaService.user.findUniqueOrThrow.mockResolvedValue(mockUser);
-      const userData = {
-        id: mockUser.id,
-        name: mockUser.name,
-        email: mockUser.email,
-        password: mockUser.password,
-        phone: mockUser.phone,
-        role: mockUser.role,
-        status: mockUser.status,
-        emailVerified: mockUser.emailVerified,
-        lastLoginAt: mockUser.lastLoginAt,
-        createdAt: mockUser.createdAt,
-        updatedAt: mockUser.updatedAt,
-      };
-
-      const result = await repository.createOAuthUserAndProvider(
-        userData,
-        OAuthType.GOOGLE,
-        'google-uid-123',
-      );
-
-      expect(mockPrismaService.$transaction).toHaveBeenCalled();
       expect(result).toBe(mockUser);
     });
   });
@@ -232,15 +169,58 @@ describe('AuthRepository', () => {
     });
   });
 
-  describe('updateEmailVerified', () => {
-    it('delegates to prisma.user.update emailVerified=true', async () => {
-      mockPrismaService.user.update.mockResolvedValue(mockUser);
+  describe('createOAuthUserAndProvider', () => {
+    it('creates the user and the provider link in one nested write', async () => {
+      mockPrismaService.user.create.mockResolvedValue(mockUser);
+      const userData = { name: mockUser.name, email: mockUser.email, emailVerified: true };
 
-      const result = await repository.updateEmailVerified(USER_ID);
+      const result = await repository.createOAuthUserAndProvider(
+        userData,
+        OAuthType.GOOGLE,
+        'google-uid-123',
+      );
 
-      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
-        where: { id: USER_ID },
-        data: { emailVerified: true },
+      expect(mockPrismaService.user.create).toHaveBeenCalledWith({
+        data: {
+          ...userData,
+          providers: { create: { type: OAuthType.GOOGLE, providerUid: 'google-uid-123' } },
+        },
+        include: { providers: true },
+      });
+      expect(result).toBe(mockUser);
+    });
+  });
+
+  describe('findUserByProvider', () => {
+    it('returns the user linked to the provider identity', async () => {
+      mockPrismaService.userProvider.findUnique.mockResolvedValue({ user: mockUser });
+
+      const result = await repository.findUserByProvider(OAuthType.GOOGLE, 'google-uid-123');
+
+      expect(mockPrismaService.userProvider.findUnique).toHaveBeenCalledWith({
+        where: { type_providerUid: { type: OAuthType.GOOGLE, providerUid: 'google-uid-123' } },
+        select: { user: { include: { providers: true } } },
+      });
+      expect(result).toBe(mockUser);
+    });
+
+    it('returns null when the provider identity is not linked', async () => {
+      mockPrismaService.userProvider.findUnique.mockResolvedValue(null);
+
+      await expect(repository.findUserByProvider(OAuthType.GOOGLE, 'x')).resolves.toBeNull();
+    });
+  });
+
+  describe('findUserByPhoneVariants', () => {
+    it('matches any stored spelling of the number', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue(mockUser);
+      const variants = ['+919876543210', '919876543210', '9876543210'];
+
+      const result = await repository.findUserByPhoneVariants(variants);
+
+      expect(mockPrismaService.user.findFirst).toHaveBeenCalledWith({
+        where: { phone: { in: variants } },
+        include: { providers: true },
       });
       expect(result).toBe(mockUser);
     });

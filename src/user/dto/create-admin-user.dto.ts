@@ -1,6 +1,6 @@
-import { IsEmail, IsNotEmpty, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { passwordRegex } from '@/auth/dto/sign-up-dto';
+import { IsStrongPassword } from '@/auth/dto/password-policy';
 
 export class CreateAdminUserDto {
   @IsString({ message: 'Name must be a string' })
@@ -14,9 +14,6 @@ export class CreateAdminUserDto {
   @IsNotEmpty({ message: 'Email is required' })
   email!: string;
 
-  @Matches(passwordRegex, {
-    message:
-      'Password must be at least 8 characters long and contain at least one uppercase letter, one number, and one special character',
-  })
+  @IsStrongPassword()
   password!: string;
 }

@@ -1,6 +1,6 @@
-import { ConflictException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Prisma, UserRole, UserStatus } from '@prisma/client';
+import { UserRole, UserStatus } from '@prisma/client';
+import { UserDeactivatedException } from '@/common/exceptions/user.exception';
 import { UserService } from './user.service';
 import { UserRepository } from '../user.repository';
 import { UpdateUserDto } from '../dto/update-user.dto';
@@ -60,6 +60,15 @@ describe('UserService', () => {
     });
   });
 
+  it('getProfile rejects a deleted account', async () => {
+    mockUserRepository.findByIdOrThrow.mockResolvedValue({
+      ...mockUser,
+      status: UserStatus.DELETED,
+    });
+
+    await expect(service.getProfile(USER_ID)).rejects.toThrow(UserDeactivatedException);
+  });
+
   describe('updateProfile', () => {
     it('updates user profile successfully', async () => {
       const dto: UpdateUserDto = { name: 'Updated Jane' };
@@ -70,17 +79,6 @@ describe('UserService', () => {
 
       expect(mockUserRepository.update).toHaveBeenCalledWith(USER_ID, dto);
       expect(result.name).toBe('Updated Jane');
-    });
-
-    it('throws ConflictException if phone number collides', async () => {
-      const dto: UpdateUserDto = { phone: '1234567890' };
-      const error = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
-        code: 'P2002',
-        clientVersion: '5.0.0',
-      });
-      mockUserRepository.update.mockRejectedValue(error);
-
-      await expect(service.updateProfile(USER_ID, dto)).rejects.toThrow(ConflictException);
     });
   });
 });

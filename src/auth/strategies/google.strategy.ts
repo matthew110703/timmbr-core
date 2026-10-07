@@ -23,12 +23,24 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     done: VerifyCallback,
   ) {
     const email = profile.emails?.[0]?.value;
-    const result = await this.auth.handleOAuthLogin(
-      OAuthType.GOOGLE,
-      profile.id,
-      email!,
-      profile.displayName,
-    );
-    done(null, result);
+    // Only trust an email Google itself has verified; otherwise anyone could
+    // sign in to an existing account by naming its address.
+    const emailVerified = (profile._json as { email_verified?: boolean }).email_verified === true;
+
+    if (!email || !emailVerified) {
+      return done(new Error('Google account has no verified email address.'));
+    }
+
+    try {
+      const result = await this.auth.handleOAuthLogin(
+        OAuthType.GOOGLE,
+        profile.id,
+        email,
+        profile.displayName,
+      );
+      done(null, result);
+    } catch (err) {
+      done(err as Error);
+    }
   }
 }

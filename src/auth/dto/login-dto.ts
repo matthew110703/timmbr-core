@@ -1,27 +1,29 @@
-import { UserRole } from '@prisma/client';
-import { IsEmail, IsNotEmpty, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { passwordRegex } from './sign-up-dto';
+import { IsNotEmpty, IsString, MaxLength, ValidateIf } from 'class-validator';
+
+const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
 export class LoginPayloadDto {
-  @Transform(({ value }) => (value as string)?.toLowerCase())
-  @IsEmail()
-  @IsNotEmpty()
-  email!: string;
+  /** Email or phone number. */
+  @ValidateIf((o: LoginPayloadDto) => !o.email)
+  @Transform(trim)
+  @IsNotEmpty({ message: 'Email or phone number is required' })
+  @IsString()
+  @MaxLength(254)
+  identifier?: string;
 
-  @Matches(passwordRegex, {
-    message:
-      'Password must be at least 8 characters long and contain at least one uppercase letter, one number, and one special character',
-  })
+  /** @deprecated Kept for the Admin Console; use `identifier`. */
+  @ValidateIf((o: LoginPayloadDto) => !o.identifier)
+  @Transform(trim)
+  @IsNotEmpty({ message: 'Email or phone number is required' })
+  @IsString()
+  @MaxLength(254)
+  email?: string;
+
+  // Only presence/length here: the strength policy applies when a password is
+  // set, not when checking one (older passwords may predate the policy).
+  @IsNotEmpty({ message: 'Password is required' })
+  @IsString()
+  @MaxLength(128)
   password!: string;
-}
-
-export class LoginResponseDto {
-  accessToken!: string;
-  refreshToken!: string;
-  id!: string;
-  name!: string;
-  email!: string;
-  role!: UserRole;
-  emailVerified!: boolean;
 }

@@ -1,5 +1,6 @@
-import { ConflictException, Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Injectable } from '@nestjs/common';
+import { UserStatus } from '@prisma/client';
+import { UserDeactivatedException } from '@/common/exceptions/user.exception';
 import { UpdateUserDto } from '../dto/update-user.dto';
 import { UserProfileDto } from '../dto/user-profile.dto';
 import { UserMapper } from '../mappers/user.mapper';
@@ -11,18 +12,12 @@ export class UserService {
 
   async getProfile(userId: string): Promise<UserProfileDto> {
     const user = await this.userRepository.findByIdOrThrow(userId);
+    if (user.status === UserStatus.DELETED) throw new UserDeactivatedException();
     return UserMapper.toProfileResponse(user);
   }
 
   async updateProfile(userId: string, dto: UpdateUserDto): Promise<UserProfileDto> {
-    try {
-      const user = await this.userRepository.update(userId, dto);
-      return UserMapper.toProfileResponse(user);
-    } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        throw new ConflictException('Phone number is already in use.');
-      }
-      throw e;
-    }
+    const user = await this.userRepository.update(userId, dto);
+    return UserMapper.toProfileResponse(user);
   }
 }

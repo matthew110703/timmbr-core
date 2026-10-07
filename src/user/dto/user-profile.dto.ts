@@ -1,9 +1,10 @@
-import { OAuthType } from '@prisma/client';
+import { OAuthType, UserRole } from '@prisma/client';
 
 export class UserProfileDto {
   id!: string;
   name!: string;
   email!: string;
+  role!: UserRole;
   phone!: string | null;
   emailVerified!: boolean;
   hasPassword!: boolean;

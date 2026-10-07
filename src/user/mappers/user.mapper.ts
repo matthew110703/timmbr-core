@@ -7,6 +7,7 @@ export class UserMapper {
       id: user.id,
       name: user.name,
       email: user.email,
+      role: user.role,
       phone: user.phone ?? null,
       emailVerified: user.emailVerified,
       hasPassword: user.password !== null,

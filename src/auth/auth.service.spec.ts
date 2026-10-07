@@ -1,558 +1,466 @@
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  HttpException,
-  HttpStatus,
-  NotFoundException,
-  UnauthorizedException,
-} from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { Test, TestingModule } from '@nestjs/testing';
-import { MailerService } from '@/mailer/mailer.service';
+import { createHash } from 'node:crypto';
+import { Test } from '@nestjs/testing';
+import { ForbiddenException } from '@nestjs/common';
+import { OAuthType, UserRole, UserStatus } from '@prisma/client';
+import * as argon2 from 'argon2';
 import { RedisService } from '@/redis/redis.service';
-import { UserRole, UserStatus } from '@prisma/client';
+import { MailerService } from '@/mailer/mailer.service';
 import { Application } from '@/common/types/application.types';
-import { User } from '@/common/types/user';
 import { TokenRevokedException } from '@/common/exceptions/token.exception';
+import { UserDeactivatedException } from '@/common/exceptions/user.exception';
+import {
+  EmailNotVerifiedException,
+  InvalidCredentialsException,
+  OAuthNotAllowedForAdminException,
+  OtpNotAllowedForAdminException,
+  PasswordSetupTokenInvalidException,
+} from '@/common/exceptions/auth.exception';
 import { AuthService } from './auth.service';
 import { AuthRepository } from './auth.repository';
-import { LoginPayloadDto } from './dto/login-dto';
-import { SignUpPayloadDto } from './dto/sign-up-dto';
-import { TokenType } from './types/token-type.enum';
+import { OtpService } from './otp/otp.service';
+import { TokenService } from './token/token.service';
 
-jest.mock('argon2', () => ({
-  hash: jest.fn(),
-  verify: jest.fn(),
-}));
-import * as argon2 from 'argon2';
-const mockedArgon2 = jest.mocked(argon2);
+jest.mock('argon2', () => ({ verify: jest.fn(), hash: jest.fn() }));
 
-const USER_ID = 'user-id-1';
-const USER_EMAIL = 'test@example.com';
-const USER_NAME = 'Test User';
-
-const baseUser: User = {
-  id: USER_ID,
-  role: UserRole.USER,
-  status: UserStatus.ACTIVE,
-  name: USER_NAME,
-  email: USER_EMAIL,
-  phone: null,
-  emailVerified: false,
-  password: 'hashed-password',
-  lastLoginAt: null,
-  createdAt: new Date('2024-01-01'),
-  updatedAt: new Date('2024-01-01'),
-};
-
-const mockJwtService: Partial<JwtService> = {
-  signAsync: jest.fn(),
-};
-
-const mockAuthRepository = {
+const repo = {
   findUserByEmail: jest.fn(),
   findUserByEmailWithProviders: jest.fn(),
+  findUserByPhoneVariants: jest.fn(),
+  findUserByProvider: jest.fn(),
   findUserById: jest.fn(),
-  findUserByIdWithProviders: jest.fn(),
-  findUserByIdOrThrow: jest.fn(),
   createEmailUser: jest.fn(),
   createOAuthUserAndProvider: jest.fn(),
   upsertUserProvider: jest.fn(),
   updateUser: jest.fn(),
-  updateLastLoginAt: jest.fn(),
-  updateEmailVerified: jest.fn(),
 };
+const redis = { setWithTTL: jest.fn(), getAndDelete: jest.fn(), get: jest.fn() };
+const mailer = { sendPasswordResetEmail: jest.fn() };
+const otp = { send: jest.fn(), verify: jest.fn() };
+const tokens = { issue: jest.fn(), rotate: jest.fn(), revoke: jest.fn(), revokeAll: jest.fn() };
 
-const mockRedisService = {
-  setWithTTL: jest.fn(),
-  getAndDelete: jest.fn(),
-  delete: jest.fn(),
-  get: jest.fn(),
-  incrementWithExpiry: jest.fn(),
-};
-
-const mockMailerService = {
-  sendVerificationEmail: jest.fn(),
-  sendPasswordResetEmail: jest.fn(),
+const TOKENS = { accessToken: 'at', refreshToken: 'rt' };
+const baseUser = {
+  id: 'u1',
+  name: 'Daenerys Targaryen',
+  email: 'dany@example.com',
+  phone: null,
+  password: 'hash',
+  role: UserRole.USER,
+  status: UserStatus.ACTIVE,
+  emailVerified: true,
+  lastLoginAt: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  providers: [],
 };
 
 describe('AuthService', () => {
   let service: AuthService;
 
   beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    const module = await Test.createTestingModule({
       providers: [
         AuthService,
-        { provide: JwtService, useValue: mockJwtService },
-        { provide: AuthRepository, useValue: mockAuthRepository },
-        { provide: RedisService, useValue: mockRedisService },
-        { provide: MailerService, useValue: mockMailerService },
+        { provide: AuthRepository, useValue: repo },
+        { provide: RedisService, useValue: redis },
+        { provide: MailerService, useValue: mailer },
+        { provide: OtpService, useValue: otp },
+        { provide: TokenService, useValue: tokens },
       ],
     }).compile();
+    service = module.get(AuthService);
 
-    service = module.get<AuthService>(AuthService);
+    tokens.issue.mockResolvedValue(TOKENS);
+    tokens.rotate.mockImplementation((_u: string, _t: string, issue: () => unknown) => issue());
+    repo.updateUser.mockImplementation((_id, data) => Promise.resolve({ ...baseUser, ...data }));
+    (argon2.hash as jest.Mock).mockResolvedValue('new-hash');
+    mailer.sendPasswordResetEmail.mockResolvedValue(undefined);
   });
 
   afterEach(() => jest.resetAllMocks());
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-  });
-
-  // ─── generateJwtTokens ──────────────────────────────────────────────────────
-
-  describe('generateJwtTokens', () => {
-    it('returns accessToken and refreshToken', async () => {
-      (mockJwtService.signAsync as jest.Mock)
-        .mockResolvedValueOnce('access-token')
-        .mockResolvedValueOnce('refresh-token');
-
-      const result = await service.generateJwtTokens(baseUser);
-
-      expect(result).toEqual({ accessToken: 'access-token', refreshToken: 'refresh-token' });
-      expect(mockJwtService.signAsync).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  // ─── findUserByEmail ─────────────────────────────────────────────────────────
-
-  describe('findUserByEmail', () => {
-    it('returns user when found', async () => {
-      mockAuthRepository.findUserByEmail.mockResolvedValue(baseUser);
-      expect(await service.findUserByEmail(USER_EMAIL)).toBe(baseUser);
-    });
-
-    it('returns null when not found', async () => {
-      mockAuthRepository.findUserByEmail.mockResolvedValue(null);
-      expect(await service.findUserByEmail('unknown@example.com')).toBeNull();
-    });
-  });
-
-  // ─── findUserById ────────────────────────────────────────────────────────────
-
-  describe('findUserById', () => {
-    it('returns user when found', async () => {
-      mockAuthRepository.findUserById.mockResolvedValue(baseUser);
-      expect(await service.findUserById(USER_ID)).toBe(baseUser);
-    });
-
-    it('returns null when not found', async () => {
-      mockAuthRepository.findUserById.mockResolvedValue(null);
-      expect(await service.findUserById('nonexistent-id')).toBeNull();
-    });
-  });
-
-  // ─── signup ──────────────────────────────────────────────────────────────────
-
-  describe('signup', () => {
-    const dto: SignUpPayloadDto = { name: USER_NAME, email: USER_EMAIL, password: 'Password1!' };
-
-    it('creates new user, sends verification email, and returns sign-up response', async () => {
-      const createdUser = { ...baseUser, providers: [] };
-      mockAuthRepository.findUserByEmailWithProviders.mockResolvedValue(null);
-      mockedArgon2.hash.mockResolvedValue('hashed');
-      mockAuthRepository.createEmailUser.mockResolvedValue(createdUser);
-      (mockJwtService.signAsync as jest.Mock).mockResolvedValue('token');
-      mockRedisService.setWithTTL.mockResolvedValue(undefined);
-      mockMailerService.sendVerificationEmail.mockResolvedValue(undefined);
-
-      const result = await service.signup(dto);
-
-      expect(mockAuthRepository.createEmailUser).toHaveBeenCalledWith(
-        expect.objectContaining({ email: USER_EMAIL, password: 'hashed' }),
-      );
-      expect(mockMailerService.sendVerificationEmail).toHaveBeenCalledWith(
-        USER_EMAIL,
-        USER_NAME,
-        expect.stringContaining('verify-email?token='),
-      );
-      expect(result).toBeDefined();
-    });
-
-    it('throws ConflictException when email already exists with a password', async () => {
-      const existingUser = { ...baseUser, password: 'existing-hash', providers: [] };
-      mockAuthRepository.findUserByEmailWithProviders.mockResolvedValue(existingUser);
-
-      await expect(service.signup(dto)).rejects.toThrow(ConflictException);
-      expect(mockAuthRepository.createEmailUser).not.toHaveBeenCalled();
-    });
-
-    it('merges OAuth-only account by adding a password when user exists with no password', async () => {
-      const oauthUser = { ...baseUser, password: null, providers: [{ type: 'GOOGLE' }] };
-      const updatedUser = { ...baseUser, password: 'hashed', providers: [{ type: 'GOOGLE' }] };
-      mockAuthRepository.findUserByEmailWithProviders.mockResolvedValue(oauthUser);
-      mockedArgon2.hash.mockResolvedValue('hashed');
-      mockAuthRepository.updateUser.mockResolvedValue(updatedUser);
-      (mockJwtService.signAsync as jest.Mock).mockResolvedValue('token');
-      mockRedisService.setWithTTL.mockResolvedValue(undefined);
-
-      const result = await service.signup(dto);
-
-      expect(mockAuthRepository.updateUser).toHaveBeenCalledWith(USER_ID, { password: 'hashed' });
-      expect(mockAuthRepository.createEmailUser).not.toHaveBeenCalled();
-      expect(result).toBeDefined();
-    });
-  });
-
   // ─── login ───────────────────────────────────────────────────────────────────
 
   describe('login', () => {
-    const dto: LoginPayloadDto = { email: USER_EMAIL, password: 'Password1!' };
+    it('accepts email or phone and returns a session', async () => {
+      repo.findUserByPhoneVariants.mockResolvedValue(baseUser);
+      (argon2.verify as jest.Mock).mockResolvedValue(true);
 
-    it('returns login response with valid credentials', async () => {
-      mockAuthRepository.findUserByEmail.mockResolvedValue(baseUser);
-      mockedArgon2.verify.mockResolvedValue(true);
-      (mockJwtService.signAsync as jest.Mock).mockResolvedValue('token');
-      mockRedisService.setWithTTL.mockResolvedValue(undefined);
+      const session = await service.login({ identifier: '98765 43210', password: 'pw' });
 
-      const result = await service.login(dto);
-
-      expect(mockedArgon2.verify).toHaveBeenCalledWith(baseUser.password, dto.password);
-      expect(result).toBeDefined();
+      expect(repo.findUserByPhoneVariants).toHaveBeenCalledWith([
+        '+919876543210',
+        '919876543210',
+        '9876543210',
+      ]);
+      expect(session).toMatchObject({ id: 'u1', accessToken: 'at', refreshToken: 'rt' });
+      expect(repo.updateUser).toHaveBeenCalledWith('u1', { lastLoginAt: expect.any(Date) });
     });
 
-    it('throws NotFoundException when user not found', async () => {
-      mockAuthRepository.findUserByEmail.mockResolvedValue(null);
-      await expect(service.login(dto)).rejects.toThrow(NotFoundException);
+    it('still accepts the legacy `email` field (Admin Console)', async () => {
+      repo.findUserByEmailWithProviders.mockResolvedValue(baseUser);
+      (argon2.verify as jest.Mock).mockResolvedValue(true);
+
+      await service.login({ email: 'Dany@Example.com', password: 'pw' });
+
+      expect(repo.findUserByEmailWithProviders).toHaveBeenCalledWith('dany@example.com');
     });
 
-    it('throws UnauthorizedException when password is invalid', async () => {
-      mockAuthRepository.findUserByEmail.mockResolvedValue(baseUser);
-      mockedArgon2.verify.mockResolvedValue(false);
-      await expect(service.login(dto)).rejects.toThrow(UnauthorizedException);
+    it.each([
+      ['unknown user', null],
+      ['no password', { ...baseUser, password: null }],
+    ])('returns one generic error for %s', async (_label, user) => {
+      repo.findUserByEmailWithProviders.mockResolvedValue(user);
+
+      await expect(service.login({ identifier: 'a@b.co', password: 'pw' })).rejects.toThrow(
+        InvalidCredentialsException,
+      );
+    });
+
+    it.each([
+      ['an unknown account', null],
+      ['an account without a password', { ...baseUser, password: null }],
+    ])('still runs a password hash check for %s (no timing difference)', async (_label, user) => {
+      repo.findUserByEmailWithProviders.mockResolvedValue(user);
+      (argon2.hash as jest.Mock).mockResolvedValue('dummy-hash');
+      (argon2.verify as jest.Mock).mockResolvedValue(true);
+
+      await expect(service.login({ identifier: 'a@b.co', password: 'pw' })).rejects.toThrow(
+        InvalidCredentialsException,
+      );
+      expect(argon2.verify).toHaveBeenCalledWith(expect.any(String), 'pw');
+    });
+
+    it('returns the same generic error for a wrong password', async () => {
+      repo.findUserByEmailWithProviders.mockResolvedValue(baseUser);
+      (argon2.verify as jest.Mock).mockResolvedValue(false);
+
+      await expect(service.login({ identifier: 'a@b.co', password: 'pw' })).rejects.toThrow(
+        InvalidCredentialsException,
+      );
+    });
+
+    it('requires a verified email', async () => {
+      repo.findUserByEmailWithProviders.mockResolvedValue({ ...baseUser, emailVerified: false });
+      (argon2.verify as jest.Mock).mockResolvedValue(true);
+
+      await expect(service.login({ identifier: 'a@b.co', password: 'pw' })).rejects.toThrow(
+        EmailNotVerifiedException,
+      );
+    });
+
+    it('blocks customers from the Admin Console', async () => {
+      repo.findUserByEmailWithProviders.mockResolvedValue(baseUser);
+      (argon2.verify as jest.Mock).mockResolvedValue(true);
+
+      await expect(
+        service.login({ identifier: 'a@b.co', password: 'pw' }, Application.ADMIN_CONSOLE),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
-  // ─── refreshTokens ───────────────────────────────────────────────────────────
+  // ─── verifyOtp ───────────────────────────────────────────────────────────────
+
+  describe('verifyOtp', () => {
+    const emailId = { type: 'email', value: 'dany@example.com' } as const;
+
+    it('creates a new account and issues a password-setup token', async () => {
+      otp.verify.mockResolvedValue(emailId);
+      repo.findUserByEmailWithProviders.mockResolvedValue(null);
+      repo.createEmailUser.mockResolvedValue({ ...baseUser, name: 'dany', password: null });
+
+      const session = await service.verifyOtp('dany@example.com', '123456');
+
+      expect(repo.createEmailUser).toHaveBeenCalledWith(
+        expect.objectContaining({ email: 'dany@example.com', emailVerified: true }),
+      );
+      expect(session).toMatchObject({ isNewUser: true, hasPassword: false });
+      expect(session.passwordSetupToken).toEqual(expect.any(String));
+      expect(redis.setWithTTL).toHaveBeenCalledWith(
+        expect.stringMatching(/^auth:pwdsetup:[0-9a-f]{64}$/),
+        600,
+        'u1',
+      );
+    });
+
+    it('signs an existing user with a password in without a setup token', async () => {
+      otp.verify.mockResolvedValue(emailId);
+      repo.findUserByEmailWithProviders.mockResolvedValue(baseUser);
+
+      const session = await service.verifyOtp('dany@example.com', '123456');
+
+      expect(session).toMatchObject({ isNewUser: false, hasPassword: true });
+      expect(session.passwordSetupToken).toBeUndefined();
+    });
+
+    it('issues a setup token for intent=reset even when a password exists', async () => {
+      otp.verify.mockResolvedValue(emailId);
+      repo.findUserByEmailWithProviders.mockResolvedValue(baseUser);
+
+      const session = await service.verifyOtp('dany@example.com', '123456', { intent: 'reset' });
+
+      expect(session.passwordSetupToken).toEqual(expect.any(String));
+    });
+
+    it('wipes a password from an unverified (pre-claimed) account and revokes its sessions', async () => {
+      otp.verify.mockResolvedValue(emailId);
+      repo.findUserByEmailWithProviders.mockResolvedValue({ ...baseUser, emailVerified: false });
+
+      const session = await service.verifyOtp('dany@example.com', '123456');
+
+      expect(tokens.revokeAll).toHaveBeenCalledWith('u1');
+      expect(repo.updateUser).toHaveBeenCalledWith(
+        'u1',
+        expect.objectContaining({ emailVerified: true, password: null }),
+      );
+      expect(session.hasPassword).toBe(false);
+    });
+
+    it('rejects deleted accounts', async () => {
+      otp.verify.mockResolvedValue(emailId);
+      repo.findUserByEmailWithProviders.mockResolvedValue({
+        ...baseUser,
+        status: UserStatus.DELETED,
+      });
+
+      await expect(service.verifyOtp('dany@example.com', '123456')).rejects.toThrow(
+        UserDeactivatedException,
+      );
+    });
+
+    it.each([UserRole.ADMIN, UserRole.MASTER])(
+      'refuses %s accounts from any app (an inbox alone never yields an admin token)',
+      async (role) => {
+        otp.verify.mockResolvedValue(emailId);
+        repo.findUserByEmailWithProviders.mockResolvedValue({ ...baseUser, role });
+
+        // No application: a storefront or curl request without an Origin header
+        await expect(service.verifyOtp('dany@example.com', '123456')).rejects.toThrow(
+          OtpNotAllowedForAdminException,
+        );
+        expect(tokens.issue).not.toHaveBeenCalled();
+      },
+    );
+
+    it('is not allowed for the Admin Console', async () => {
+      await expect(
+        service.verifyOtp('dany@example.com', '123456', {
+          application: Application.ADMIN_CONSOLE,
+        }),
+      ).rejects.toThrow(OtpNotAllowedForAdminException);
+      expect(otp.verify).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── setPassword ─────────────────────────────────────────────────────────────
+
+  describe('setPassword', () => {
+    it('sets the password, revokes other sessions and returns a fresh one', async () => {
+      redis.getAndDelete.mockResolvedValue('u1');
+      repo.findUserById.mockResolvedValue({ ...baseUser, password: null });
+
+      const session = await service.setPassword('u1', 'setup-token', 'Str0ng!pw');
+
+      expect(repo.updateUser).toHaveBeenCalledWith('u1', { password: 'new-hash' });
+      expect(tokens.revokeAll).toHaveBeenCalledWith('u1');
+      expect(session).toMatchObject({ hasPassword: true, accessToken: 'at' });
+    });
+
+    it('rejects a token issued to another user', async () => {
+      redis.getAndDelete.mockResolvedValue('someone-else');
+
+      await expect(service.setPassword('u1', 't', 'Str0ng!pw')).rejects.toThrow(
+        PasswordSetupTokenInvalidException,
+      );
+      expect(repo.updateUser).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── OAuth ───────────────────────────────────────────────────────────────────
+
+  describe('handleOAuthLogin', () => {
+    it('finds the user by provider identity first', async () => {
+      repo.findUserByProvider.mockResolvedValue({
+        ...baseUser,
+        providers: [{ type: OAuthType.GOOGLE }],
+      });
+
+      await service.handleOAuthLogin(OAuthType.GOOGLE, 'g1', 'Dany@Example.com', 'Google Name');
+
+      expect(repo.findUserByEmailWithProviders).not.toHaveBeenCalled();
+      expect(repo.upsertUserProvider).not.toHaveBeenCalled();
+    });
+
+    it("doesn't overwrite a name the user chose", async () => {
+      repo.findUserByProvider.mockResolvedValue({
+        ...baseUser,
+        providers: [{ type: OAuthType.GOOGLE }],
+      });
+
+      await service.handleOAuthLogin(OAuthType.GOOGLE, 'g1', 'dany@example.com', 'Google Name');
+
+      expect(repo.updateUser).toHaveBeenCalledWith('u1', { lastLoginAt: expect.any(Date) });
+    });
+
+    it('links Google to an existing email account and claims it if unverified', async () => {
+      repo.findUserByProvider.mockResolvedValue(null);
+      repo.findUserByEmailWithProviders.mockResolvedValue({ ...baseUser, emailVerified: false });
+
+      await service.handleOAuthLogin(OAuthType.GOOGLE, 'g1', 'dany@example.com', 'Dany');
+
+      expect(repo.upsertUserProvider).toHaveBeenCalledWith('u1', OAuthType.GOOGLE, 'g1');
+      expect(tokens.revokeAll).toHaveBeenCalledWith('u1');
+      expect(repo.updateUser).toHaveBeenCalledWith(
+        'u1',
+        expect.objectContaining({ emailVerified: true, password: null }),
+      );
+    });
+
+    it('creates a new account with a lowercased email', async () => {
+      repo.findUserByProvider.mockResolvedValue(null);
+      repo.findUserByEmailWithProviders.mockResolvedValue(null);
+      repo.createOAuthUserAndProvider.mockResolvedValue(baseUser);
+
+      await service.handleOAuthLogin(OAuthType.GOOGLE, 'g1', 'Dany@Example.com', 'Dany');
+
+      expect(repo.createOAuthUserAndProvider).toHaveBeenCalledWith(
+        expect.objectContaining({ email: 'dany@example.com', emailVerified: true }),
+        OAuthType.GOOGLE,
+        'g1',
+      );
+    });
+
+    it.each([UserRole.ADMIN, UserRole.MASTER])(
+      'refuses %s accounts (a Google account alone never yields an admin token)',
+      async (role) => {
+        repo.findUserByProvider.mockResolvedValue(null);
+        repo.findUserByEmailWithProviders.mockResolvedValue({ ...baseUser, role });
+
+        await expect(
+          service.handleOAuthLogin(OAuthType.GOOGLE, 'g1', 'dany@example.com', 'Dany'),
+        ).rejects.toThrow(OAuthNotAllowedForAdminException);
+        expect(repo.upsertUserProvider).not.toHaveBeenCalled();
+        expect(tokens.issue).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects deleted accounts', async () => {
+      repo.findUserByProvider.mockResolvedValue({ ...baseUser, status: UserStatus.DELETED });
+
+      await expect(
+        service.handleOAuthLogin(OAuthType.GOOGLE, 'g1', 'dany@example.com', 'Dany'),
+      ).rejects.toThrow(UserDeactivatedException);
+    });
+  });
+
+  // ─── sessions & passwords ────────────────────────────────────────────────────
 
   describe('refreshTokens', () => {
-    const rawToken = 'raw-refresh-token';
+    it('rotates the token for an active user', async () => {
+      repo.findUserById.mockResolvedValue(baseUser);
 
-    it('returns new tokens when stored userId matches', async () => {
-      mockRedisService.getAndDelete.mockResolvedValue(USER_ID);
-      mockAuthRepository.findUserById.mockResolvedValue(baseUser);
-      (mockJwtService.signAsync as jest.Mock).mockResolvedValue('new-token');
-      mockRedisService.setWithTTL.mockResolvedValue(undefined);
-
-      const result = await service.refreshTokens(USER_ID, rawToken);
-
-      expect(result).toHaveProperty('accessToken');
-      expect(result).toHaveProperty('refreshToken');
+      await expect(service.refreshTokens('u1', 'rt')).resolves.toEqual(TOKENS);
+      expect(tokens.rotate).toHaveBeenCalledWith('u1', 'rt', expect.any(Function));
     });
 
-    it('throws TokenRevokedException when stored userId is null', async () => {
-      mockRedisService.getAndDelete.mockResolvedValue(null);
-      await expect(service.refreshTokens(USER_ID, rawToken)).rejects.toThrow(TokenRevokedException);
-    });
+    it('revokes everything for a deleted user', async () => {
+      repo.findUserById.mockResolvedValue({ ...baseUser, status: UserStatus.DELETED });
 
-    it('throws TokenRevokedException when stored userId does not match', async () => {
-      mockRedisService.getAndDelete.mockResolvedValue('other-user-id');
-      await expect(service.refreshTokens(USER_ID, rawToken)).rejects.toThrow(TokenRevokedException);
-    });
-
-    it('throws TokenRevokedException when user no longer exists', async () => {
-      mockRedisService.getAndDelete.mockResolvedValue(USER_ID);
-      mockAuthRepository.findUserById.mockResolvedValue(null);
-      await expect(service.refreshTokens(USER_ID, rawToken)).rejects.toThrow(TokenRevokedException);
+      await expect(service.refreshTokens('u1', 'rt')).rejects.toThrow(TokenRevokedException);
+      expect(tokens.revokeAll).toHaveBeenCalledWith('u1');
     });
   });
 
-  // ─── revokeRefreshToken ──────────────────────────────────────────────────────
+  describe('OAuth exchange codes', () => {
+    const BIND = 'storefront-nonce';
+    const BIND_HASH = createHash('sha256').update(BIND).digest('hex');
 
-  describe('revokeRefreshToken', () => {
-    it('calls redis.delete with the hashed token key', async () => {
-      mockRedisService.delete.mockResolvedValue(undefined);
-      await service.revokeRefreshToken('raw-token');
-      expect(mockRedisService.delete).toHaveBeenCalledWith(expect.stringMatching(/^auth:refresh:/));
-    });
-  });
-
-  // ─── verifyEmail ─────────────────────────────────────────────────────────────
-
-  describe('verifyEmail', () => {
-    it('marks emailVerified=true when token is valid', async () => {
-      mockRedisService.getAndDelete.mockResolvedValue(USER_ID);
-      mockAuthRepository.updateEmailVerified.mockResolvedValue(baseUser);
-
-      await service.verifyEmail('valid-token');
-
-      expect(mockAuthRepository.updateEmailVerified).toHaveBeenCalledWith(USER_ID);
-    });
-
-    it('throws UnauthorizedException when token is not found in Redis', async () => {
-      mockRedisService.getAndDelete.mockResolvedValue(null);
-      await expect(service.verifyEmail('expired-token')).rejects.toThrow(UnauthorizedException);
-    });
-  });
-
-  // ─── forgotPassword ──────────────────────────────────────────────────────────
-
-  describe('forgotPassword', () => {
-    it('stores reset token and sends reset email for a valid user with password', async () => {
-      mockAuthRepository.findUserByEmail.mockResolvedValue(baseUser);
-      mockRedisService.setWithTTL.mockResolvedValue(undefined);
-      mockMailerService.sendPasswordResetEmail.mockResolvedValue(undefined);
-
-      await service.forgotPassword(USER_EMAIL);
-
-      expect(mockRedisService.setWithTTL).toHaveBeenCalledWith(
-        expect.stringMatching(/^pwd:reset:/),
-        900,
-        USER_ID,
+    it('parks the session behind a single-use code (no token in the code)', async () => {
+      const code = await service.createOAuthExchangeCode(
+        { user: baseUser, tokens: TOKENS },
+        BIND_HASH,
       );
-      expect(mockMailerService.sendPasswordResetEmail).toHaveBeenCalled();
-    });
 
-    it('returns silently when user is not found', async () => {
-      mockAuthRepository.findUserByEmail.mockResolvedValue(null);
-      await expect(service.forgotPassword('unknown@example.com')).resolves.toBeUndefined();
-      expect(mockMailerService.sendPasswordResetEmail).not.toHaveBeenCalled();
-    });
-
-    it('returns silently when user has no password (OAuth-only account)', async () => {
-      mockAuthRepository.findUserByEmail.mockResolvedValue({ ...baseUser, password: null });
-      await expect(service.forgotPassword(USER_EMAIL)).resolves.toBeUndefined();
-      expect(mockMailerService.sendPasswordResetEmail).not.toHaveBeenCalled();
-    });
-  });
-
-  // ─── validateToken ───────────────────────────────────────────────────────────
-
-  describe('validateToken', () => {
-    it('resolves when token exists in Redis', async () => {
-      mockRedisService.get.mockResolvedValue(USER_ID);
-      await expect(
-        service.validateToken('valid-token', TokenType.RESET_PASSWORD),
-      ).resolves.toBeUndefined();
-    });
-
-    it('throws UnauthorizedException with TOKEN_INVALID code when token is missing', async () => {
-      mockRedisService.get.mockResolvedValue(null);
-
-      const error = await service
-        .validateToken('expired-token', TokenType.RESET_PASSWORD)
-        .catch((e: unknown) => e);
-
-      expect(error).toBeInstanceOf(UnauthorizedException);
-      expect((error as UnauthorizedException).getResponse()).toMatchObject({
-        code: 'TOKEN_INVALID',
-      });
-    });
-  });
-
-  // ─── resetPassword ───────────────────────────────────────────────────────────
-
-  describe('resetPassword', () => {
-    it('resets the password successfully', async () => {
-      mockRedisService.getAndDelete.mockResolvedValue(USER_ID);
-      mockAuthRepository.findUserById.mockResolvedValue(baseUser);
-      mockedArgon2.verify.mockResolvedValue(false);
-      mockedArgon2.hash.mockResolvedValue('new-hashed');
-      mockAuthRepository.updateUser.mockResolvedValue(baseUser);
-
-      await expect(service.resetPassword('valid-token', 'NewPassword1!')).resolves.toBeUndefined();
-
-      expect(mockAuthRepository.updateUser).toHaveBeenCalledWith(USER_ID, {
-        password: 'new-hashed',
-      });
-    });
-
-    it('throws UnauthorizedException (TOKEN_INVALID) when token is invalid', async () => {
-      mockRedisService.getAndDelete.mockResolvedValue(null);
-
-      const error = await service
-        .resetPassword('bad-token', 'NewPassword1!')
-        .catch((e: unknown) => e);
-
-      expect(error).toBeInstanceOf(UnauthorizedException);
-      expect((error as UnauthorizedException).getResponse()).toMatchObject({
-        code: 'TOKEN_INVALID',
-      });
-    });
-
-    it('throws NotFoundException when user is not found', async () => {
-      mockRedisService.getAndDelete.mockResolvedValue(USER_ID);
-      mockAuthRepository.findUserById.mockResolvedValue(null);
-      await expect(service.resetPassword('valid-token', 'NewPassword1!')).rejects.toThrow(
-        NotFoundException,
+      expect(code).toMatch(/^[A-Za-z0-9_-]{40,}$/);
+      expect(code).not.toContain(TOKENS.accessToken);
+      expect(redis.setWithTTL).toHaveBeenCalledWith(
+        expect.stringMatching(/^auth:oauth:code:[0-9a-f]{64}$/),
+        60,
+        expect.stringContaining(BIND_HASH),
       );
     });
 
-    it('throws UnauthorizedException (NO_PASSWORD_ACCOUNT) when user has no password', async () => {
-      mockRedisService.getAndDelete.mockResolvedValue(USER_ID);
-      mockAuthRepository.findUserById.mockResolvedValue({ ...baseUser, password: null });
+    const record = JSON.stringify({
+      session: { id: 'u1', refreshToken: 'rt' },
+      bindHash: BIND_HASH,
+    });
 
-      const error = await service
-        .resetPassword('valid-token', 'NewPassword1!')
-        .catch((e: unknown) => e);
+    it('exchanges a code once, for the browser holding the bind nonce', async () => {
+      redis.getAndDelete.mockResolvedValueOnce(record).mockResolvedValueOnce(null);
 
-      expect(error).toBeInstanceOf(UnauthorizedException);
-      expect((error as UnauthorizedException).getResponse()).toMatchObject({
-        code: 'NO_PASSWORD_ACCOUNT',
+      await expect(service.exchangeOAuthCode('code', BIND)).resolves.toMatchObject({ id: 'u1' });
+      await expect(service.exchangeOAuthCode('code', BIND)).rejects.toMatchObject({
+        response: { code: 'OAUTH_CODE_INVALID' },
       });
     });
 
-    it('throws BadRequestException when new password is the same as the current password', async () => {
-      mockRedisService.getAndDelete.mockResolvedValue(USER_ID);
-      mockAuthRepository.findUserById.mockResolvedValue(baseUser);
-      mockedArgon2.verify.mockResolvedValue(true);
+    it("rejects a valid code presented with another browser's nonce (login CSRF)", async () => {
+      redis.getAndDelete.mockResolvedValueOnce(record);
 
-      await expect(service.resetPassword('valid-token', 'SamePassword1!')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.exchangeOAuthCode('code', 'attacker-nonce')).rejects.toMatchObject({
+        response: { code: 'OAUTH_CODE_INVALID' },
+      });
     });
   });
-
-  // ─── changePassword ──────────────────────────────────────────────────────────
 
   describe('changePassword', () => {
-    it('changes password and stores change timestamp in Redis', async () => {
-      mockAuthRepository.findUserById.mockResolvedValue(baseUser);
-      mockedArgon2.verify.mockResolvedValue(true);
-      mockedArgon2.hash.mockResolvedValue('new-hashed');
-      mockAuthRepository.updateUser.mockResolvedValue(baseUser);
-      mockRedisService.setWithTTL.mockResolvedValue(undefined);
+    it('revokes all sessions after a change', async () => {
+      repo.findUserById.mockResolvedValue(baseUser);
+      (argon2.verify as jest.Mock).mockResolvedValue(true);
 
-      await expect(
-        service.changePassword(USER_ID, 'OldPassword1!', 'NewPassword1!'),
-      ).resolves.toBeUndefined();
+      await service.changePassword('u1', 'Old1!pass', 'New1!pass');
 
-      expect(mockAuthRepository.updateUser).toHaveBeenCalledWith(USER_ID, {
-        password: 'new-hashed',
-      });
-      expect(mockRedisService.setWithTTL).toHaveBeenCalledWith(
-        `pwd:change:${USER_ID}`,
-        1_209_600,
-        expect.any(String),
-      );
-    });
-
-    it('throws BadRequestException immediately when old and new passwords are the same', async () => {
-      await expect(service.changePassword(USER_ID, 'same', 'same')).rejects.toThrow(
-        BadRequestException,
-      );
-      expect(mockAuthRepository.findUserById).not.toHaveBeenCalled();
-    });
-
-    it('throws NotFoundException when user is not found', async () => {
-      mockAuthRepository.findUserById.mockResolvedValue(null);
-      await expect(service.changePassword(USER_ID, 'OldPass1!', 'NewPass1!')).rejects.toThrow(
-        NotFoundException,
-      );
-    });
-
-    it('throws UnauthorizedException (NO_PASSWORD_ACCOUNT) when user has no password', async () => {
-      mockAuthRepository.findUserById.mockResolvedValue({ ...baseUser, password: null });
-
-      const error = await service
-        .changePassword(USER_ID, 'OldPass1!', 'NewPass1!')
-        .catch((e: unknown) => e);
-
-      expect(error).toBeInstanceOf(UnauthorizedException);
-      expect((error as UnauthorizedException).getResponse()).toMatchObject({
-        code: 'NO_PASSWORD_ACCOUNT',
-      });
-    });
-
-    it('throws UnauthorizedException when old password is incorrect', async () => {
-      mockAuthRepository.findUserById.mockResolvedValue(baseUser);
-      mockedArgon2.verify.mockResolvedValue(false);
-      await expect(service.changePassword(USER_ID, 'WrongOld1!', 'NewPass1!')).rejects.toThrow(
-        UnauthorizedException,
-      );
+      expect(tokens.revokeAll).toHaveBeenCalledWith('u1');
     });
   });
 
-  // ─── resendVerificationEmail ─────────────────────────────────────────────────
+  describe('resetPassword', () => {
+    it('revokes all sessions after a reset', async () => {
+      redis.getAndDelete.mockResolvedValue('u1');
+      repo.findUserById.mockResolvedValue(baseUser);
+      (argon2.verify as jest.Mock).mockResolvedValue(false);
 
-  describe('resendVerificationEmail', () => {
-    it('sends verification email and returns correct attemptsLeft', async () => {
-      mockAuthRepository.findUserById.mockResolvedValue({ ...baseUser, emailVerified: false });
-      mockRedisService.incrementWithExpiry.mockResolvedValue(1);
-      mockRedisService.setWithTTL.mockResolvedValue(undefined);
-      mockMailerService.sendVerificationEmail.mockResolvedValue(undefined);
+      await service.resetPassword('reset-token', 'New1!pass');
 
-      const result = await service.resendVerificationEmail(USER_ID);
-
-      expect(result).toEqual({ attemptsLeft: 2 });
-      expect(mockMailerService.sendVerificationEmail).toHaveBeenCalled();
-    });
-
-    it('throws NotFoundException when user is not found', async () => {
-      mockAuthRepository.findUserById.mockResolvedValue(null);
-      await expect(service.resendVerificationEmail(USER_ID)).rejects.toThrow(NotFoundException);
-    });
-
-    it('throws ConflictException when email is already verified', async () => {
-      mockAuthRepository.findUserById.mockResolvedValue({ ...baseUser, emailVerified: true });
-      await expect(service.resendVerificationEmail(USER_ID)).rejects.toThrow(ConflictException);
-    });
-
-    it('throws 429 HttpException when resend count exceeds max attempts', async () => {
-      mockAuthRepository.findUserById.mockResolvedValue({ ...baseUser, emailVerified: false });
-      mockRedisService.incrementWithExpiry.mockResolvedValue(4);
-
-      const error = await service.resendVerificationEmail(USER_ID).catch((e: unknown) => e);
-
-      expect(error).toBeInstanceOf(HttpException);
-      expect((error as HttpException).getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
+      expect(tokens.revokeAll).toHaveBeenCalledWith('u1');
     });
   });
 
-  // ─── login & application security ──────────────────────────────────────────
+  describe('forgotPassword', () => {
+    it('links to the Admin Console (first ADMIN_CONSOLE_ORIGIN)', async () => {
+      repo.findUserByEmail.mockResolvedValue(baseUser);
 
-  describe('login', () => {
-    const loginPayload = { email: USER_EMAIL, password: 'Password123!' };
+      await service.forgotPassword('dany@example.com');
 
-    it('allows ADMIN login when application is ADMIN_CONSOLE', async () => {
-      const adminUser = { ...baseUser, role: UserRole.ADMIN, password: 'hashed_password' };
-      mockAuthRepository.findUserByEmail.mockResolvedValue(adminUser);
-      (argon2.verify as jest.Mock).mockResolvedValue(true);
-      mockJwtService.signAsync.mockResolvedValue('jwt_token');
-      mockRedisService.setWithTTL.mockResolvedValue(undefined);
-
-      const result = await service.login(loginPayload, Application.ADMIN_CONSOLE);
-
-      expect(result.data.accessToken).toBe('jwt_token');
-    });
-
-    it('allows MASTER login when application is ADMIN_CONSOLE', async () => {
-      const masterUser = { ...baseUser, role: UserRole.MASTER, password: 'hashed_password' };
-      mockAuthRepository.findUserByEmail.mockResolvedValue(masterUser);
-      (argon2.verify as jest.Mock).mockResolvedValue(true);
-      mockJwtService.signAsync.mockResolvedValue('jwt_token');
-      mockRedisService.setWithTTL.mockResolvedValue(undefined);
-
-      const result = await service.login(loginPayload, Application.ADMIN_CONSOLE);
-
-      expect(result.data.accessToken).toBe('jwt_token');
-    });
-
-    it('rejects USER (customer) login when application is ADMIN_CONSOLE with ForbiddenException', async () => {
-      const customerUser = { ...baseUser, role: UserRole.USER, password: 'hashed_password' };
-      mockAuthRepository.findUserByEmail.mockResolvedValue(customerUser);
-      (argon2.verify as jest.Mock).mockResolvedValue(true);
-
-      await expect(service.login(loginPayload, Application.ADMIN_CONSOLE)).rejects.toThrow(
-        ForbiddenException,
+      expect(mailer.sendPasswordResetEmail).toHaveBeenCalledWith(
+        'dany@example.com',
+        'Daenerys Targaryen',
+        expect.stringMatching(/^http:\/\/localhost:5000\/reset-password\?token=[0-9a-f]{64}$/),
       );
-
-      // Verify no tokens were created and no redis key set
-      expect(mockJwtService.signAsync).not.toHaveBeenCalled();
-      expect(mockRedisService.setWithTTL).not.toHaveBeenCalled();
     });
 
-    it('allows USER (customer) login when application is STOREFRONT', async () => {
-      const customerUser = { ...baseUser, role: UserRole.USER, password: 'hashed_password' };
-      mockAuthRepository.findUserByEmail.mockResolvedValue(customerUser);
-      (argon2.verify as jest.Mock).mockResolvedValue(true);
-      mockJwtService.signAsync.mockResolvedValue('jwt_token');
-      mockRedisService.setWithTTL.mockResolvedValue(undefined);
+    it("doesn't wait for the email (response time can't reveal registered emails)", async () => {
+      repo.findUserByEmail.mockResolvedValue(baseUser);
+      mailer.sendPasswordResetEmail.mockReturnValue(new Promise(() => {})); // never settles
 
-      const result = await service.login(loginPayload, Application.STOREFRONT);
+      await expect(service.forgotPassword('dany@example.com')).resolves.toBeUndefined();
+    });
 
-      expect(result.data.accessToken).toBe('jwt_token');
+    it('still answers normally when the email provider fails', async () => {
+      repo.findUserByEmail.mockResolvedValue(baseUser);
+      mailer.sendPasswordResetEmail.mockRejectedValue(new Error('provider down'));
+
+      await expect(service.forgotPassword('dany@example.com')).resolves.toBeUndefined();
     });
   });
 });

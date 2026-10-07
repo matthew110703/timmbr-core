@@ -1,208 +1,302 @@
-import { env } from '@/config/env';
+import { appUrls } from '@/config/env';
 import { RedisService } from '@/redis/redis.service';
 import { MailerService } from '@/mailer/mailer.service';
-import { User, UserProvider } from '@/common/types/user';
+import { User, UserWithProviders } from '@/common/types/user';
 import {
   BadRequestException,
-  ConflictException,
   ForbiddenException,
-  HttpException,
-  HttpStatus,
   Injectable,
-  NotFoundException,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { OAuthType, UserRole, UserStatus } from '@prisma/client';
-import { Application } from '@/common/types/application.types';
-
-export interface OAuthLoginResult {
-  user: User & { providers: UserProvider[] };
-  tokens: { accessToken: string; refreshToken: string };
-}
-import { JwtService } from '@nestjs/jwt';
-import { SignUpPayloadDto } from './dto/sign-up-dto';
 import * as argon2 from 'argon2';
 import * as crypto from 'node:crypto';
-import { AuthMapper } from './auth.mapper';
-import { LoginPayloadDto } from './dto/login-dto';
+import { Application } from '@/common/types/application.types';
 import { TokenRevokedException } from '@/common/exceptions/token.exception';
 import { UserDeactivatedException } from '@/common/exceptions/user.exception';
-import { TokenType } from './types/token-type.enum';
+import {
+  EmailNotVerifiedException,
+  InvalidCredentialsException,
+  InvalidIdentifierException,
+  OAuthNotAllowedForAdminException,
+  OtpNotAllowedForAdminException,
+  PasswordSetupTokenInvalidException,
+} from '@/common/exceptions/auth.exception';
 import { AuthRepository } from './auth.repository';
+import { AuthMapper, AuthSession } from './auth.mapper';
+import { OtpService } from './otp/otp.service';
+import { TokenPair, TokenService } from './token/token.service';
+import { TokenType } from './types/token-type.enum';
+import { LoginPayloadDto } from './dto/login-dto';
+import {
+  OAUTH_EXCHANGE_CODE_TTL_S,
+  OtpIntent,
+  PASSWORD_RESET_TTL_S,
+  PASSWORD_SETUP_TTL_S,
+} from './auth.constants';
+import {
+  Identifier,
+  legacyPhoneVariants,
+  normalizeEmail,
+  normalizeIdentifier,
+} from './utils/identifier.util';
+
+interface OAuthExchangeRecord {
+  session: AuthSession;
+  /** sha256 (hex) of the storefront's binding nonce. */
+  bindHash: string;
+}
+
+export interface OAuthLoginResult {
+  user: UserWithProviders;
+  tokens: TokenPair;
+}
+
+/** Placeholder for phone-only accounts until the email column becomes optional. */
+const phonePlaceholderEmail = (e164: string) => `${e164.slice(1)}@phone.timmbr.com`;
+
+/** Roles that can use the Admin Console API. They must always sign in with their password. */
+const isAdminRole = (role: UserRole) => role === UserRole.ADMIN || role === UserRole.MASTER;
+
+/**
+ * Hash of a random password, verified against when the account doesn't exist
+ * (or has no password) so a failed login takes the same time either way and
+ * can't be used to discover which accounts exist.
+ */
+let dummyHash: Promise<string> | null = null;
+const getDummyHash = () => (dummyHash ??= argon2.hash(crypto.randomBytes(32).toString('hex')));
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
-    private jwt: JwtService,
-    private authRepository: AuthRepository,
-    private redis: RedisService,
-    private mailer: MailerService,
+    private readonly authRepository: AuthRepository,
+    private readonly redis: RedisService,
+    private readonly mailer: MailerService,
+    private readonly otp: OtpService,
+    private readonly tokens: TokenService,
   ) {}
 
-  async generateJwtTokens(user: User) {
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-    };
+  // ─── Password login ──────────────────────────────────────────────────────────
 
-    const [accessToken, refreshToken] = await Promise.all([
-      this.jwt.signAsync(payload, {
-        secret: env.JWT_ACCESS_SECRET,
-        expiresIn: env.JWT_ACCESS_EXPIRES_IN as any,
-      }),
-      this.jwt.signAsync(payload, {
-        secret: env.JWT_REFRESH_SECRET,
-        expiresIn: env.JWT_REFRESH_EXPIRES_IN as any,
-      }),
-    ]);
+  async login(payload: LoginPayloadDto, application?: Application): Promise<AuthSession> {
+    const id = normalizeIdentifier(payload.identifier ?? payload.email ?? '');
+    if (!id) throw new InvalidIdentifierException();
 
-    return { accessToken, refreshToken };
-  }
+    const user = await this.findUserByIdentifier(id);
 
-  findUserByEmail(email: string) {
-    return this.authRepository.findUserByEmail(email);
-  }
-
-  findUserById(userId: string) {
-    return this.authRepository.findUserById(userId);
-  }
-
-  async signup(payload: SignUpPayloadDto) {
-    const existingUser = await this.authRepository.findUserByEmailWithProviders(payload.email);
-
-    if (existingUser) {
-      if (existingUser.password !== null) {
-        throw new ConflictException('Email already exists.');
-      }
-      // OAuth-only account — merge by adding a password
-      const hashedPassword = await argon2.hash(payload.password);
-      const updatedUser = await this.authRepository.updateUser(existingUser.id, {
-        password: hashedPassword,
-      });
-      const tokens = await this.generateJwtTokens(updatedUser);
-      await this.storeRefreshToken(updatedUser.id, tokens.refreshToken);
-      return AuthMapper.toSignUpResponse(updatedUser, tokens);
+    // One generic error (and the same hashing time) for unknown user / no
+    // password / wrong password, so login can't reveal which accounts exist.
+    const isPasswordValid = await argon2.verify(
+      user?.password ?? (await getDummyHash()),
+      payload.password,
+    );
+    if (!user?.password || !isPasswordValid) {
+      throw new InvalidCredentialsException();
     }
 
-    const hashedPassword = await argon2.hash(payload.password);
+    this.assertActive(user);
+    if (!user.emailVerified) throw new EmailNotVerifiedException();
+    this.assertAllowedInApplication(user, application);
 
-    const user = await this.authRepository.createEmailUser({
-      name: payload.name,
-      email: payload.email,
-      password: hashedPassword,
+    const loggedIn = await this.authRepository.updateUser(user.id, { lastLoginAt: new Date() });
+    const tokens = await this.tokens.issue(loggedIn);
+    return AuthMapper.toSession(loggedIn, tokens);
+  }
+
+  // ─── One-time code login ─────────────────────────────────────────────────────
+
+  sendOtp(identifier: string) {
+    return this.otp.send(identifier);
+  }
+
+  async verifyOtp(
+    identifier: string,
+    code: string,
+    { application, intent = 'login' }: { application?: Application; intent?: OtpIntent } = {},
+  ): Promise<AuthSession> {
+    // Admins must use their password; an inbox alone isn't enough for the console.
+    if (application === Application.ADMIN_CONSOLE) throw new OtpNotAllowedForAdminException();
+
+    const id = await this.otp.verify(identifier, code);
+    const existing = await this.findUserByIdentifier(id);
+    const now = new Date();
+
+    let user: UserWithProviders;
+    if (existing) {
+      this.assertActive(existing);
+      // Whatever app is asking: an inbox alone must never yield an admin token
+      // (the access token's role is all the Admin Console API checks).
+      if (isAdminRole(existing.role)) throw new OtpNotAllowedForAdminException();
+      user = await this.authRepository.updateUser(existing.id, {
+        lastLoginAt: now,
+        ...(id.type === 'email' &&
+          !existing.emailVerified &&
+          (await this.claimUnverified(existing))),
+      });
+    } else {
+      user = await this.authRepository.createEmailUser({
+        name: id.type === 'email' ? id.value.split('@')[0] : 'Customer',
+        email: id.type === 'email' ? id.value : phonePlaceholderEmail(id.value),
+        phone: id.type === 'phone' ? id.value : null,
+        emailVerified: true,
+        lastLoginAt: now,
+      });
+    }
+
+    const hasPassword = user.password !== null;
+    const passwordSetupToken =
+      !hasPassword || intent === 'reset' ? await this.issuePasswordSetupToken(user.id) : undefined;
+
+    const tokens = await this.tokens.issue(user);
+    return AuthMapper.toSession(user, tokens, {
+      isNewUser: !existing,
+      hasPassword,
+      passwordSetupToken,
+    });
+  }
+
+  // ─── Password setup (after OTP) ──────────────────────────────────────────────
+
+  /**
+   * Set a password using the single-use token issued at OTP verification.
+   * Every other session is revoked and a fresh pair is returned for this one.
+   */
+  async setPassword(userId: string, token: string, password: string): Promise<AuthSession> {
+    const owner = await this.redis.getAndDelete(this.passwordSetupKey(token));
+    if (!owner || owner !== userId) throw new PasswordSetupTokenInvalidException();
+
+    const existing = await this.authRepository.findUserById(userId);
+    if (!existing) throw new PasswordSetupTokenInvalidException();
+    this.assertActive(existing);
+
+    const user = await this.authRepository.updateUser(userId, {
+      password: await argon2.hash(password),
     });
 
-    const tokens = await this.generateJwtTokens(user);
-    await this.storeRefreshToken(user.id, tokens.refreshToken);
-
-    const verificationToken = await this.generateEmailVerificationToken(user.id);
-    const verificationUrl = `${env.APP_BASE_URL}/api/v1/auth/verify-email?token=${verificationToken}`;
-    await this.mailer.sendVerificationEmail(user.email, user.name, verificationUrl);
-
-    return AuthMapper.toSignUpResponse(user, tokens);
+    await this.tokens.revokeAll(userId);
+    const tokens = await this.tokens.issue(user);
+    return AuthMapper.toSession(user, tokens, { hasPassword: true });
   }
+
+  // ─── OAuth ───────────────────────────────────────────────────────────────────
 
   async handleOAuthLogin(
     type: OAuthType,
     providerUid: string,
-    email: string,
+    rawEmail: string,
     name: string,
   ): Promise<OAuthLoginResult> {
-    const existingUser = await this.authRepository.findUserByEmailWithProviders(email);
+    const email = normalizeEmail(rawEmail);
+    if (!email) throw new InvalidIdentifierException();
+    const now = new Date();
 
-    if (!existingUser) {
-      const finalUser = await this.authRepository.createOAuthUserAndProvider(
-        { name, email, emailVerified: true },
+    // Provider identity first; email only links a provider the first time.
+    const existing =
+      (await this.authRepository.findUserByProvider(type, providerUid)) ??
+      (await this.authRepository.findUserByEmailWithProviders(email));
+
+    if (!existing) {
+      const user = await this.authRepository.createOAuthUserAndProvider(
+        { name, email, emailVerified: true, lastLoginAt: now },
         type,
         providerUid,
       );
-      const tokens = await this.generateJwtTokens(finalUser);
-      await this.storeRefreshToken(finalUser.id, tokens.refreshToken);
-      return { user: finalUser, tokens };
+      return { user, tokens: await this.tokens.issue(user) };
     }
 
-    await this.authRepository.upsertUserProvider(existingUser.id, type, providerUid);
-    const finalUser = await this.authRepository.updateUser(existingUser.id, { name });
-    const tokens = await this.generateJwtTokens(finalUser);
-    await this.storeRefreshToken(finalUser.id, tokens.refreshToken);
-    return { user: finalUser, tokens };
+    this.assertActive(existing);
+    // A Google account alone must never yield an admin token: admins use their password.
+    if (isAdminRole(existing.role)) throw new OAuthNotAllowedForAdminException();
+    if (!existing.providers.some((p) => p.type === type)) {
+      await this.authRepository.upsertUserProvider(existing.id, type, providerUid);
+    }
+
+    const user = await this.authRepository.updateUser(existing.id, {
+      lastLoginAt: now,
+      // Keep a name the user chose; only fill it when missing.
+      ...(!existing.name && { name }),
+      ...(!existing.emailVerified && (await this.claimUnverified(existing))),
+    });
+    return { user, tokens: await this.tokens.issue(user) };
   }
 
-  async login(payload: LoginPayloadDto, application?: Application) {
-    const user = await this.findUserByEmail(payload.email);
+  /**
+   * Park an OAuth sign-in behind a single-use, short-lived code. The browser
+   * only ever carries the code; the storefront BFF exchanges it server-side.
+   */
+  async createOAuthExchangeCode(
+    { user, tokens }: OAuthLoginResult,
+    bindHash: string,
+  ): Promise<string> {
+    const code = crypto.randomBytes(32).toString('base64url');
+    const record: OAuthExchangeRecord = { session: AuthMapper.toSession(user, tokens), bindHash };
+    await this.redis.setWithTTL(
+      this.oauthCodeKey(code),
+      OAUTH_EXCHANGE_CODE_TTL_S,
+      JSON.stringify(record),
+    );
+    return code;
+  }
 
-    if (!user) {
-      throw new NotFoundException('User not found.');
+  /** Single use; only redeemable with the nonce whose hash started the flow. */
+  async exchangeOAuthCode(code: string, bind: string): Promise<AuthSession> {
+    const raw = await this.redis.getAndDelete(this.oauthCodeKey(code));
+    const record = raw ? (JSON.parse(raw) as OAuthExchangeRecord) : null;
+
+    const presented = crypto.createHash('sha256').update(bind).digest('hex');
+    const matches =
+      !!record &&
+      record.bindHash.length === presented.length &&
+      crypto.timingSafeEqual(Buffer.from(record.bindHash), Buffer.from(presented));
+
+    if (!record || !matches) {
+      throw new UnauthorizedException({
+        code: 'OAUTH_CODE_INVALID',
+        message: 'Sign-in session expired. Please try again.',
+      });
     }
+    return record.session;
+  }
 
-    if (user.status === UserStatus.DELETED) {
-      throw new UserDeactivatedException();
-    }
+  // ─── Sessions ────────────────────────────────────────────────────────────────
 
-    const isPasswordValid = await argon2.verify(user?.password || '', payload.password);
-
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials.');
-    }
-
-    // Origin/Application security: prevent customer accounts from logging into Admin Console
-    if (application === Application.ADMIN_CONSOLE) {
-      if (user.role !== UserRole.ADMIN && user.role !== UserRole.MASTER) {
-        throw new ForbiddenException(
-          'Access denied. Only administrative accounts may sign in to the Admin Console.',
-        );
+  async refreshTokens(userId: string, oldRawToken: string): Promise<TokenPair> {
+    return this.tokens.rotate(userId, oldRawToken, async () => {
+      const user = await this.authRepository.findUserById(userId);
+      if (!user || user.status === UserStatus.DELETED) {
+        await this.tokens.revokeAll(userId);
+        throw new TokenRevokedException();
       }
-    }
-
-    const tokens = await this.generateJwtTokens(user);
-    await this.storeRefreshToken(user.id, tokens.refreshToken);
-    return AuthMapper.toLoginResponse(user, tokens);
+      return this.tokens.issue(user);
+    });
   }
 
-  async refreshTokens(userId: string, oldRawToken: string) {
-    const storedUserId = await this.redis.getAndDelete(this.tokenKey(oldRawToken));
-
-    if (!storedUserId || storedUserId !== userId) {
-      throw new TokenRevokedException();
-    }
-
-    const user = await this.findUserById(userId);
-    if (!user) {
-      throw new TokenRevokedException();
-    }
-
-    const tokens = await this.generateJwtTokens(user);
-    await this.storeRefreshToken(userId, tokens.refreshToken);
-    return tokens;
+  revokeRefreshToken(rawToken: string) {
+    return this.tokens.revoke(rawToken);
   }
 
-  async revokeRefreshToken(rawToken: string) {
-    await this.redis.delete(this.tokenKey(rawToken));
+  revokeAllSessions(userId: string) {
+    return this.tokens.revokeAll(userId);
   }
 
-  async updateLastLoginAt(userId: string) {
-    await this.authRepository.updateLastLoginAt(userId);
-  }
-
-  async verifyEmail(token: string): Promise<void> {
-    const userId = await this.redis.getAndDelete(`email:verify:${token}`);
-    if (!userId) {
-      throw new UnauthorizedException('Invalid or expired verification token.');
-    }
-    await this.authRepository.updateEmailVerified(userId);
-  }
+  // ─── Admin Console password reset (email link) ───────────────────────────────
 
   async forgotPassword(email: string): Promise<void> {
-    const user = await this.findUserByEmail(email);
-    if (!user) return;
-    if (!user.password) return;
+    const user = await this.authRepository.findUserByEmail(email);
+    if (!user?.password) return;
 
     const token = crypto.randomBytes(32).toString('hex');
-    await this.redis.setWithTTL(`pwd:reset:${token}`, 900, user.id);
+    await this.redis.setWithTTL(`pwd:reset:${token}`, PASSWORD_RESET_TTL_S, user.id);
 
-    const resetUrl = `${env.CLIENT_BASE_URL}/reset-password?token=${token}`;
-    await this.mailer.sendPasswordResetEmail(user.email, user.name, resetUrl);
+    const resetUrl = `${appUrls.adminConsole}/reset-password?token=${token}`;
+    // Not awaited: waiting only for real accounts would let response time
+    // reveal which emails are registered.
+    this.mailer.sendPasswordResetEmail(user.email, user.name, resetUrl).catch((err: unknown) => {
+      this.logger.error(`Password reset email failed: ${(err as Error).message}`);
+    });
   }
 
   async validateToken(token: string, type: TokenType): Promise<void> {
@@ -210,8 +304,7 @@ export class AuthService {
       [TokenType.RESET_PASSWORD]: `pwd:reset:${token}`,
     };
 
-    const value = await this.redis.get(keyMap[type]);
-    if (!value) {
+    if (!(await this.redis.get(keyMap[type]))) {
       throw new UnauthorizedException({
         message: 'Token is invalid or has expired.',
         code: 'TOKEN_INVALID',
@@ -221,32 +314,20 @@ export class AuthService {
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
     const userId = await this.redis.getAndDelete(`pwd:reset:${token}`);
-    if (!userId) {
+    const user = userId ? await this.authRepository.findUserById(userId) : null;
+    if (!user?.password) {
       throw new UnauthorizedException({
         message: 'Token is invalid or has expired.',
         code: 'TOKEN_INVALID',
       });
     }
 
-    const user = await this.findUserById(userId);
-    if (!user) {
-      throw new NotFoundException('User not found.');
-    }
-
-    if (!user.password) {
-      throw new UnauthorizedException({
-        message: 'This account uses OAuth login and has no password to reset.',
-        code: 'NO_PASSWORD_ACCOUNT',
-      });
-    }
-
-    const isSame = await argon2.verify(user.password, newPassword);
-    if (isSame) {
+    if (await argon2.verify(user.password, newPassword)) {
       throw new BadRequestException('New password cannot be the same as the current password.');
     }
 
-    const hashedPassword = await argon2.hash(newPassword);
-    await this.authRepository.updateUser(userId, { password: hashedPassword });
+    await this.authRepository.updateUser(user.id, { password: await argon2.hash(newPassword) });
+    await this.tokens.revokeAll(user.id);
   }
 
   async changePassword(userId: string, oldPassword: string, newPassword: string): Promise<void> {
@@ -254,66 +335,58 @@ export class AuthService {
       throw new BadRequestException('New password cannot be the same as the old password.');
     }
 
-    const user = await this.findUserById(userId);
-    if (!user) {
-      throw new NotFoundException('User not found.');
-    }
-
-    if (!user.password) {
+    const user = await this.authRepository.findUserById(userId);
+    if (!user?.password || !(await argon2.verify(user.password, oldPassword))) {
       throw new UnauthorizedException({
-        message: 'This account uses OAuth login and has no password to change.',
-        code: 'NO_PASSWORD_ACCOUNT',
+        message: 'Current password is incorrect.',
+        code: 'INVALID_CREDENTIALS',
       });
     }
 
-    const isValid = await argon2.verify(user.password, oldPassword);
-    if (!isValid) {
-      throw new UnauthorizedException('Current password is incorrect.');
-    }
-
-    const hashedPassword = await argon2.hash(newPassword);
-    await this.authRepository.updateUser(userId, { password: hashedPassword });
-
-    await this.redis.setWithTTL(`pwd:change:${userId}`, 1_209_600, new Date().toISOString());
+    await this.authRepository.updateUser(userId, { password: await argon2.hash(newPassword) });
+    await this.tokens.revokeAll(userId);
   }
 
-  async resendVerificationEmail(userId: string): Promise<{ attemptsLeft: number }> {
-    const user = await this.findUserById(userId);
-    if (!user) {
-      throw new NotFoundException('User not found.');
-    }
-    if (user.emailVerified) {
-      throw new ConflictException('Email is already verified.');
-    }
+  // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-    const MAX_ATTEMPTS = 3;
-    const count = await this.redis.incrementWithExpiry(`resend:verify:${userId}`, 3600);
-    if (count > MAX_ATTEMPTS) {
-      throw new HttpException(
-        'Too many resend requests. Try again later.',
-        HttpStatus.TOO_MANY_REQUESTS,
+  private async findUserByIdentifier(id: Identifier): Promise<UserWithProviders | null> {
+    return id.type === 'email'
+      ? this.authRepository.findUserByEmailWithProviders(id.value)
+      : this.authRepository.findUserByPhoneVariants(legacyPhoneVariants(id.value));
+  }
+
+  /**
+   * The real owner just proved control of this email. Anything set up before
+   * that (a password from an unverified signup, its sessions) can't be trusted.
+   */
+  private async claimUnverified(user: User) {
+    if (user.password) await this.tokens.revokeAll(user.id);
+    return { emailVerified: true, password: null };
+  }
+
+  private assertActive(user: Pick<User, 'status'>) {
+    if (user.status === UserStatus.DELETED) throw new UserDeactivatedException();
+  }
+
+  private assertAllowedInApplication(user: Pick<User, 'role'>, application?: Application) {
+    if (application === Application.ADMIN_CONSOLE && !isAdminRole(user.role)) {
+      throw new ForbiddenException(
+        'Access denied. Only administrative accounts may sign in to the Admin Console.',
       );
     }
-
-    const token = await this.generateEmailVerificationToken(userId);
-    const verificationUrl = `${env.APP_BASE_URL}/api/v1/auth/verify-email?token=${token}`;
-    await this.mailer.sendVerificationEmail(user.email, user.name, verificationUrl);
-
-    return { attemptsLeft: MAX_ATTEMPTS - count };
   }
 
-  private async generateEmailVerificationToken(userId: string): Promise<string> {
+  private async issuePasswordSetupToken(userId: string): Promise<string> {
     const token = crypto.randomBytes(32).toString('hex');
-    await this.redis.setWithTTL(`email:verify:${token}`, 86400, userId);
+    await this.redis.setWithTTL(this.passwordSetupKey(token), PASSWORD_SETUP_TTL_S, userId);
     return token;
   }
 
-  private async storeRefreshToken(userId: string, rawToken: string) {
-    await this.redis.setWithTTL(this.tokenKey(rawToken), env.REFRESH_TOKEN_TTL, userId);
+  private oauthCodeKey(code: string) {
+    return `auth:oauth:code:${crypto.createHash('sha256').update(code).digest('hex')}`;
   }
 
-  private tokenKey(rawToken: string) {
-    const hash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    return `auth:refresh:${hash}`;
+  private passwordSetupKey(token: string) {
+    return `auth:pwdsetup:${crypto.createHash('sha256').update(token).digest('hex')}`;
   }
 }

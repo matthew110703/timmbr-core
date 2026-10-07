@@ -10,15 +10,23 @@ import {
 import { setupSwagger } from './config/swagger.config';
 import { PrismaService } from './prisma/prisma.service';
 import { Logger } from 'nestjs-pino';
-import { env } from './config/env';
+import { env, parseOrigins } from './config/env';
 import { APP_CONFIG } from './config/app.config';
 import helmet from '@fastify/helmet';
 import fastifyCookie from '@fastify/cookie';
 import { registerRawBodyHook } from './common/hooks/raw-body.hook';
+import { registerTrustedClientHook } from './common/trusted-client';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
+  const fastifyAdapter = new FastifyAdapter({
+    // Behind a load balancer the client IP is in X-Forwarded-For; rate limits
+    // (throttler, OTP) need the real IP rather than the proxy's.
+    trustProxy: env.TRUST_PROXY > 0 ? env.TRUST_PROXY : false,
+    requestIdHeader: 'x-request-id',
+    genReqId: (req) => (req.headers['x-request-id'] as string) ?? crypto.randomUUID(),
+  });
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, fastifyAdapter);
 
   // Pino Logger
   app.useLogger(app.get(Logger));
@@ -29,8 +37,18 @@ async function bootstrap() {
   // Preserve raw request body for webhook signature verification
   registerRawBodyHook(fastifyInstance);
 
-  // Capture response body for structured logging (attached to req.raw.__resBody)
-  fastifyInstance.addHook('onSend', (request, _reply, payload: string, done) => {
+  // Identify the storefront BFF (server-to-server) before guards run
+  registerTrustedClientHook(fastifyInstance);
+
+  // Propagate correlation ID on response headers immediately
+  fastifyInstance.addHook('onRequest', (request, reply, done) => {
+    reply.header('x-request-id', request.id);
+    done();
+  });
+
+  // Capture response body for structured logging and ensure header is retained
+  fastifyInstance.addHook('onSend', (request, reply, payload: string, done) => {
+    reply.header('x-request-id', request.id);
     (request.raw as { __resBody?: string }).__resBody = payload;
     done(null, payload);
   });
@@ -44,14 +62,6 @@ async function bootstrap() {
   });
 
   // CORS — synchronized with centralized application origin settings
-  const parseOrigins = (str?: string) =>
-    str
-      ? str
-          .split(',')
-          .map((o) => o.trim())
-          .filter(Boolean)
-      : [];
-
   const corsOrigins = Array.from(
     new Set([
       ...parseOrigins(env.STOREFRONT_ORIGIN),
@@ -75,7 +85,10 @@ async function bootstrap() {
       'sec-ch-ua',
       'sec-ch-ua-mobile',
       'sec-ch-ua-platform',
+      'x-request-id',
+      'X-Request-Id',
     ],
+    exposedHeaders: ['x-request-id', 'X-Request-Id'],
   });
 
   // Global prefix and URI versioning
