@@ -9,3 +9,5 @@ process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
 process.env.GOOGLE_CLIENT_SECRET = 'test-google-client-secret';
 process.env.GOOGLE_CALLBACK_URL = 'http://localhost:3000/api/v1/auth/google/callback';
 process.env.CORE_INTERNAL_KEY = 'test-internal-key-0123456789abcdef0123';
+process.env.STOREFRONT_ORIGIN = 'http://localhost:3000';
+process.env.ADMIN_CONSOLE_ORIGIN = 'http://localhost:5000';

@@ -30,6 +30,7 @@ import { CartModule } from './cart/cart.module';
 import { OrderModule } from './order/order.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { PageModule } from './page/page.module';
+import { WishlistModule } from './wishlist/wishlist.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { PageModule } from './page/page.module';
     OrderModule,
     WebhookModule,
     PageModule,
+    WishlistModule,
   ],
   controllers: [AppController],
   providers: [
