@@ -17,6 +17,7 @@ export const APP_ROUTES = {
   PAYMENTS: 'payments',
   WEBHOOKS: 'webhooks',
   ADDRESSES: 'addresses',
+  GEO: 'geo',
   MEDIA: 'media',
   HEALTH: 'health',
   PAGES: 'pages',

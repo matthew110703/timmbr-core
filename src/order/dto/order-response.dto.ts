@@ -15,6 +15,8 @@ export class OrderItemResponseDto {
   gstRate!: number;
   taxAmount!: number;
   metadata!: any;
+  /** Variant (else product) primary image; null if none or the product is gone. */
+  thumbnail!: string | null;
   createdAt!: Date;
 }
 

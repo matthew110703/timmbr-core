@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { MediaService } from '@/media/media.service';
 import { OrderService } from './order.service';
 import { PrismaService } from '@/prisma/prisma.service';
 import { OrderRepository } from './order.repository';
@@ -12,6 +13,8 @@ import {
 } from '@/common/exceptions/order.exception';
 import { OrderStatus, PaymentProvider, PaymentStatus } from '@prisma/client';
 import { CartRepository } from '@/cart/cart.repository';
+
+const mockMedia = { getPublicUrl: jest.fn((key: string) => `https://cdn.test/${key}`) };
 
 describe('OrderService', () => {
   let service: OrderService;
@@ -162,6 +165,7 @@ describe('OrderService', () => {
         { provide: RazorpayService, useValue: mockRazorpay },
         { provide: PaymentRepository, useValue: mockPaymentRepo },
         { provide: CartRepository, useValue: mockCartRepo },
+        { provide: MediaService, useValue: mockMedia },
       ],
     }).compile();
 
@@ -325,6 +329,62 @@ describe('OrderService', () => {
       await expect(service.getUserOrderById('user-uuid-1', 'non-existent')).rejects.toThrow(
         OrderNotFoundException,
       );
+    });
+  });
+
+  describe('getUserOrders', () => {
+    it('filters by several statuses at once (e.g. the "In progress" tab)', async () => {
+      orderRepository.findUserOrders.mockResolvedValue([[mockOrder], 1]);
+
+      await service.getUserOrders('user-uuid-1', {
+        page: 1,
+        limit: 10,
+        status: [OrderStatus.CONFIRMED, OrderStatus.PROCESSING, OrderStatus.SHIPPED],
+      });
+
+      expect(orderRepository.findUserOrders).toHaveBeenCalledWith(
+        'user-uuid-1',
+        { status: { in: [OrderStatus.CONFIRMED, OrderStatus.PROCESSING, OrderStatus.SHIPPED] } },
+        1,
+        10,
+      );
+    });
+
+    it('applies no status filter when none is given', async () => {
+      orderRepository.findUserOrders.mockResolvedValue([[], 0]);
+
+      await service.getUserOrders('user-uuid-1', { page: 1, limit: 20 });
+
+      expect(orderRepository.findUserOrders).toHaveBeenCalledWith('user-uuid-1', {}, 1, 20);
+    });
+  });
+
+  describe('order item thumbnails', () => {
+    const withImages = (variantKey?: string, productKey?: string) => ({
+      ...mockOrder,
+      items: [
+        {
+          ...mockOrder.items[0],
+          variant: { images: variantKey ? [{ storageKey: variantKey }] : [] },
+          product: { images: productKey ? [{ storageKey: productKey }] : [] },
+        },
+      ],
+    });
+
+    it.each([
+      ['the variant image first', withImages('v.jpg', 'p.jpg'), 'https://cdn.test/v.jpg'],
+      [
+        'the product image when the variant has none',
+        withImages(undefined, 'p.jpg'),
+        'https://cdn.test/p.jpg',
+      ],
+      ['null when neither has one', withImages(), null],
+    ])('uses %s', async (_label, order, expected) => {
+      orderRepository.findById.mockResolvedValue(order);
+
+      const result = await service.getUserOrderById('user-uuid-1', 'order-uuid-1');
+
+      expect(result.items[0].thumbnail).toBe(expected);
     });
   });
 

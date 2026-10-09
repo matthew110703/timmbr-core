@@ -3,6 +3,15 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { OrderStatus, Prisma } from '@prisma/client';
 import { OrderWithRelations } from './order.mapper';
 
+/** Items with their variant / product primary image, for thumbnails. */
+const primaryImage = { where: { isPrimary: true }, take: 1, select: { storageKey: true } } as const;
+const itemsWithImages = {
+  include: {
+    variant: { select: { images: primaryImage } },
+    product: { select: { images: primaryImage } },
+  },
+} satisfies Prisma.Order$itemsArgs;
+
 @Injectable()
 export class OrderRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -21,7 +30,7 @@ export class OrderRepository {
     return this.prisma.order.findUnique({
       where: { id },
       include: {
-        items: true,
+        items: itemsWithImages,
         payments: {
           orderBy: { createdAt: 'desc' },
         },
@@ -44,7 +53,7 @@ export class OrderRepository {
       this.prisma.order.findMany({
         where: combinedWhere,
         include: {
-          items: true,
+          items: itemsWithImages,
           payments: {
             orderBy: { createdAt: 'desc' },
           },

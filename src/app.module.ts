@@ -31,6 +31,7 @@ import { OrderModule } from './order/order.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { PageModule } from './page/page.module';
 import { WishlistModule } from './wishlist/wishlist.module';
+import { GeoModule } from './geo/geo.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     AuthModule,
     UserModule,
     AddressModule,
+    GeoModule,
     AdminModule,
     CategoryModule,
     BrandModule,

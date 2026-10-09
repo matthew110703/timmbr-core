@@ -36,6 +36,8 @@ export const envSchema = z.object({
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  // Reverse geocoding for "use my location" on address forms. Unset = 503.
+  GEOAPIFY_API_KEY: z.string().optional(),
   ORDER_EXPIRATION_TTL_MINUTES: z.coerce.number().default(15),
   GUEST_CART_TTL_DAYS: z.coerce.number().default(7),
   CACHE_TTL_SECONDS: z.coerce.number().default(120),

@@ -16,6 +16,7 @@ import {
 } from './dto/order-response.dto';
 import { OrderCleanupResponseDto } from './dto/order-cleanup-response.dto';
 import { GetOrdersQueryDto } from './dto/get-orders-query.dto';
+import { MediaService } from '@/media/media.service';
 import { OrderMapper } from './order.mapper';
 import { PaymentMapper } from '@/payment/payment.mapper';
 import { PaymentResponseDto } from '@/payment/dto/payment-response.dto';
@@ -49,7 +50,11 @@ export class OrderService {
     private readonly razorpayService: RazorpayService,
     private readonly paymentRepository: PaymentRepository,
     private readonly cartRepository: CartRepository,
+    private readonly mediaService: MediaService,
   ) {}
+
+  /** Public URL for an item thumbnail's storage key. */
+  private readonly thumbnailUrl = (key: string) => this.mediaService.getPublicUrl(key);
 
   async getQuote(userId: string, dto: CheckoutQuoteDto): Promise<QuoteResponseDto> {
     const { pricing } = await this.orderPricingService.calculateQuoteAndValidate(
@@ -199,14 +204,14 @@ export class OrderService {
     const limit = query.limit ?? 20;
 
     const where: Prisma.OrderWhereInput = {
-      ...(query.status && { status: query.status }),
+      ...(query.status?.length && { status: { in: query.status } }),
     };
 
     const [orders, total] = await this.orderRepository.findUserOrders(userId, where, page, limit);
     const totalPages = Math.ceil(total / limit);
 
     return {
-      data: orders.map((o) => OrderMapper.toResponse(o)),
+      data: orders.map((o) => OrderMapper.toResponse(o, this.thumbnailUrl)),
       meta: {
         page,
         limit,
@@ -228,7 +233,7 @@ export class OrderService {
       throw new OrderAccessForbiddenException();
     }
 
-    return OrderMapper.toResponse(order);
+    return OrderMapper.toResponse(order, this.thumbnailUrl);
   }
 
   async getUserOrderPayment(userId: string, orderId: string): Promise<PaymentResponseDto> {
@@ -254,7 +259,7 @@ export class OrderService {
     const limit = query.limit ?? 20;
 
     const where: Prisma.OrderWhereInput = {
-      ...(query.status && { status: query.status }),
+      ...(query.status?.length && { status: { in: query.status } }),
       ...(query.userId && { userId: query.userId }),
       ...(query.search && {
         OR: [
@@ -288,7 +293,7 @@ export class OrderService {
       throw new OrderNotFoundException();
     }
 
-    return OrderMapper.toResponse(order);
+    return OrderMapper.toResponse(order, this.thumbnailUrl);
   }
 
   async updateOrderStatus(orderId: string, newStatus: OrderStatus): Promise<OrderResponseDto> {

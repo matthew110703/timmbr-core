@@ -6,13 +6,27 @@ import {
 } from './dto/order-response.dto';
 import { PaymentMapper } from '@/payment/payment.mapper';
 
+type ImageRef = { images: { storageKey: string }[] } | null;
+
+/** Items may carry their variant / product primary image (see OrderRepository). */
+export type OrderItemWithImages = OrderItem & { variant?: ImageRef; product?: ImageRef };
+
 export type OrderWithRelations = Order & {
-  items: OrderItem[];
+  items: OrderItemWithImages[];
   payments?: Payment[];
 };
 
+/** Turns a storage key into a public URL (MediaService.getPublicUrl). */
+export type ThumbnailResolver = (storageKey: string) => string;
+
 export class OrderMapper {
-  static toItemResponse(item: OrderItem): OrderItemResponseDto {
+  static toItemResponse(
+    item: OrderItemWithImages,
+    resolveThumbnail?: ThumbnailResolver,
+  ): OrderItemResponseDto {
+    // Variant image first, then the product's; null once both are gone.
+    const storageKey =
+      item.variant?.images?.[0]?.storageKey ?? item.product?.images?.[0]?.storageKey;
     return {
       id: item.id,
       orderId: item.orderId,
@@ -27,11 +41,15 @@ export class OrderMapper {
       gstRate: Number(item.gstRate),
       taxAmount: Number(item.taxAmount),
       metadata: item.metadata,
+      thumbnail: storageKey && resolveThumbnail ? resolveThumbnail(storageKey) : null,
       createdAt: item.createdAt,
     };
   }
 
-  static toResponse(order: OrderWithRelations): OrderResponseDto {
+  static toResponse(
+    order: OrderWithRelations,
+    resolveThumbnail?: ThumbnailResolver,
+  ): OrderResponseDto {
     return {
       id: order.id,
       userId: order.userId,
@@ -49,7 +67,7 @@ export class OrderMapper {
       expiresAt: order.expiresAt ?? null,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
-      items: (order.items || []).map((item) => OrderMapper.toItemResponse(item)),
+      items: (order.items || []).map((item) => OrderMapper.toItemResponse(item, resolveThumbnail)),
       payments: order.payments?.map((payment) => PaymentMapper.toResponse(payment)),
     };
   }
