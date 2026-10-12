@@ -8,12 +8,15 @@
 | `pnpm test` | Run all unit tests |
 | `pnpm test:watch` | Run tests in watch mode |
 | `pnpm test:cov` | Run tests with coverage report |
-| `pnpm lint` | ESLint + Prettier check |
+| `pnpm lint` | ESLint + Prettier, auto-fix |
+| `pnpm lint:check` | ESLint + Prettier, no fix (what CI runs) |
 | `pnpm format` | Auto-format all source files |
 | `pnpm build` | Production build |
 | `pnpm db:migrate` | Create and apply a Prisma migration (`prisma migrate dev`) |
 
 Prisma client regenerates automatically via the `postinstall` hook. For a manual regen: `pnpm exec prisma generate`.
+
+CI/CD (checks, migration drift check, staging deploy to Render): see [docs/ci-cd.md](docs/ci-cd.md).
 
 ---
 

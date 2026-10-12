@@ -6,3 +6,7 @@ allowBuilds:
   argon2: true
   prisma: true
   unrs-resolver: true
+peerDependencyRules:
+  ignoreMissing:
+    - class-validator
+    - class-transformer

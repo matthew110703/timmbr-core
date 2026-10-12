@@ -1,0 +1,186 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, staging]
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: Lint, types, tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint:check
+      - run: pnpm check:types
+      - run: pnpm test
+      - run: pnpm build
+
+  # Applies every migration to an empty Postgres, then fails if schema.prisma
+  # has changes that no migration covers.
+  migrations:
+    name: Prisma migrations
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: timmbr_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ci" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/timmbr_ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations to empty database
+        run: pnpm exec prisma migrate deploy
+
+      - name: Check schema matches migrations
+        run: |
+          set +e
+          pnpm exec prisma migrate diff --from-config-datasource --to-schema prisma --exit-code
+          code=$?
+          if [ "$code" = "2" ]; then
+            echo "::error::prisma/ schema has changes without a migration. Run 'pnpm db:migrate' and commit the migration."
+          fi
+          exit $code
+
+  # Single required status check for branch protection.
+  ci-ok:
+    name: CI OK
+    needs: [checks, migrations]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "One or more checks failed or were cancelled." && exit 1
+          fi
+
+  deploy-staging:
+    name: Deploy staging
+    needs: [checks, migrations]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_API_URL }}
+    # Never cancel a migration or deploy mid-flight; newer pushes queue.
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    env:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      STAGING_API_URL: ${{ vars.STAGING_API_URL }}
+    steps:
+      - name: Check configuration
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          missing=""
+          [ -z "$RENDER_DEPLOY_HOOK_URL" ] && missing="$missing RENDER_DEPLOY_HOOK_URL(secret)"
+          [ -z "$DATABASE_URL" ] && missing="$missing DATABASE_URL(secret)"
+          [ -z "$STAGING_API_URL" ] && missing="$missing STAGING_API_URL(variable)"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing in the 'staging' environment:$missing" && exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Free Render instances have no pre-deploy command, so migrations run
+      # here, before the new code goes live (keep migrations additive).
+      - name: Migrate staging database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm exec prisma migrate deploy
+
+      - name: Trigger Render deploy
+        id: trigger
+        run: |
+          # Pin the deploy to the commit that passed CI.
+          response=$(curl -fsS -X POST "${RENDER_DEPLOY_HOOK_URL}&ref=${GITHUB_SHA}")
+          deploy_id=$(jq -r '.deploy.id // empty' <<< "$response")
+          service_id=$(sed -nE 's|.*/deploy/(srv-[^?]+).*|\1|p' <<< "$RENDER_DEPLOY_HOOK_URL")
+          echo "deploy_id=$deploy_id" >> "$GITHUB_OUTPUT"
+          echo "service_id=$service_id" >> "$GITHUB_OUTPUT"
+          echo "Triggered deploy ${deploy_id:-<unknown>} for ${GITHUB_SHA}"
+
+      - name: Wait for deploy to go live
+        if: env.RENDER_API_KEY != '' && steps.trigger.outputs.deploy_id != ''
+        timeout-minutes: 20
+        run: |
+          url="https://api.render.com/v1/services/${{ steps.trigger.outputs.service_id }}/deploys/${{ steps.trigger.outputs.deploy_id }}"
+          while true; do
+            status=$(curl -fsS -H "Authorization: Bearer $RENDER_API_KEY" "$url" | jq -r '.status')
+            echo "$(date +%T) $status"
+            case "$status" in
+              live) exit 0 ;;
+              *failed|canceled|deactivated) echo "::error::Render deploy ended with status: $status" && exit 1 ;;
+            esac
+            sleep 15
+          done
+
+      # Without RENDER_API_KEY this only proves the service is up (possibly the
+      # previous version); with it, it runs after the new deploy is live.
+      - name: Health check
+        run: |
+          for i in $(seq 1 18); do
+            if curl -fsS --max-time 20 "${STAGING_API_URL%/}/health"; then
+              echo && exit 0
+            fi
+            echo "Attempt $i failed; retrying in 10s (free instances cold-start slowly)…"
+            sleep 10
+          done
+          echo "::error::${STAGING_API_URL%/}/health did not return 200" && exit 1
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### timmbr-core → staging"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Render deploy: ${{ steps.trigger.outputs.deploy_id || 'n/a' }}"
+            echo "- URL: ${STAGING_API_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"
