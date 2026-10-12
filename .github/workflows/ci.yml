@@ -97,7 +97,8 @@ jobs:
     environment:
       name: staging
       url: ${{ vars.STAGING_API_URL }}
-    # Never cancel a migration or deploy mid-flight; newer pushes queue.
+    # Never cancel a deploy mid-flight; newer pushes queue. Staging migrations
+    # are applied manually (pnpm exec prisma migrate deploy) before deploying.
     concurrency:
       group: deploy-staging
       cancel-in-progress: false
@@ -107,41 +108,13 @@ jobs:
       STAGING_API_URL: ${{ vars.STAGING_API_URL }}
     steps:
       - name: Check configuration
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           missing=""
           [ -z "$RENDER_DEPLOY_HOOK_URL" ] && missing="$missing RENDER_DEPLOY_HOOK_URL(secret)"
-          [ -z "$DATABASE_URL" ] && missing="$missing DATABASE_URL(secret)"
           [ -z "$STAGING_API_URL" ] && missing="$missing STAGING_API_URL(variable)"
           if [ -n "$missing" ]; then
             echo "::error::Missing in the 'staging' environment:$missing" && exit 1
           fi
-
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      # Free Render instances have no pre-deploy command, so migrations run
-      # here, before the new code goes live (keep migrations additive).
-      # Retries cover Neon waking a suspended (scale-to-zero) compute.
-      - name: Migrate staging database
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          for i in 1 2 3; do
-            pnpm exec prisma migrate deploy && exit 0
-            echo "Attempt $i failed; retrying in 10s…"
-            sleep 10
-          done
-          exit 1
 
       - name: Trigger Render deploy
         id: trigger
