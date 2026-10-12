@@ -23,6 +23,7 @@ export class CategoryService {
   async getCategoryTree(
     rootParentId?: string,
     onlyActive = false,
+    maxDepth?: number,
   ): Promise<CategoryTreeResponseDto[]> {
     if (rootParentId) {
       const parentCategory = await this.categoryRepository.findById(rootParentId);
@@ -38,19 +39,30 @@ export class CategoryService {
 
     const allCategories = await this.categoryRepository.findAllSortedByName();
 
-    const buildTree = (parentId: string | null): CategoryTreeResponseDto[] => {
-      return allCategories
-        .filter(
-          (cat) =>
-            cat.parentId === parentId && (!onlyActive || cat.status === CategoryStatus.ACTIVE),
-        )
-        .map((cat) => ({
-          ...CategoryMapper.toResponse(cat),
-          children: buildTree(cat.id),
-        }));
-    };
+    // Group once by parent (keeps the repository's name order), so the walk is O(n).
+    const childrenOf = new Map<string | null, typeof allCategories>();
+    for (const cat of allCategories) {
+      if (onlyActive && cat.status !== CategoryStatus.ACTIVE) continue;
+      const siblings = childrenOf.get(cat.parentId);
+      if (siblings) siblings.push(cat);
+      else childrenOf.set(cat.parentId, [cat]);
+    }
 
-    return buildTree(rootParentId ?? null);
+    // `level` is 1 for the first level returned; past `maxDepth`, children are
+    // empty. `visited` stops a corrupt parent cycle from recursing forever.
+    const visited = new Set<string>();
+    const buildTree = (parentId: string | null, level: number): CategoryTreeResponseDto[] =>
+      (childrenOf.get(parentId) ?? [])
+        .filter((cat) => !visited.has(cat.id))
+        .map((cat) => {
+          visited.add(cat.id);
+          return {
+            ...CategoryMapper.toResponse(cat),
+            children: maxDepth && level >= maxDepth ? [] : buildTree(cat.id, level + 1),
+          };
+        });
+
+    return buildTree(rootParentId ?? null, 1);
   }
 
   async create(dto: CreateCategoryDto): Promise<CategoryResponseDto> {

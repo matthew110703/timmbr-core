@@ -65,14 +65,26 @@ describe('CategoryController', () => {
     });
   });
 
-  describe('getTree', () => {
-    it('delegates to service.getCategoryTree with optional parentId and onlyActive=true', async () => {
+  describe('getRootTree', () => {
+    it('delegates to service.getCategoryTree from the roots with onlyActive=true and depth', async () => {
       const treeResult = [{ ...mockCategoryResponse, children: [] }];
       mockCategoryService.getCategoryTree.mockResolvedValue(treeResult);
 
-      const result = await controller.getTree(CAT_ID_1);
+      const result = await controller.getRootTree({ depth: 3 });
 
-      expect(mockCategoryService.getCategoryTree).toHaveBeenCalledWith(CAT_ID_1, true);
+      expect(mockCategoryService.getCategoryTree).toHaveBeenCalledWith(undefined, true, 3);
+      expect(result).toBe(treeResult);
+    });
+  });
+
+  describe('getTree', () => {
+    it('delegates to service.getCategoryTree with parentId, onlyActive=true and depth', async () => {
+      const treeResult = [{ ...mockCategoryResponse, children: [] }];
+      mockCategoryService.getCategoryTree.mockResolvedValue(treeResult);
+
+      const result = await controller.getTree(CAT_ID_1, {});
+
+      expect(mockCategoryService.getCategoryTree).toHaveBeenCalledWith(CAT_ID_1, true, undefined);
       expect(result).toBe(treeResult);
     });
   });

@@ -126,6 +126,31 @@ describe('CategoryService', () => {
       expect(tree[0].children?.[0]?.id).toBe(CAT_ID_2);
     });
 
+    it('stops at maxDepth: deeper levels come back with empty children', async () => {
+      mockCategoryRepository.findAllSortedByName.mockResolvedValue([baseCategory, subCategory]);
+
+      const tree = await service.getCategoryTree(undefined, true, 1);
+
+      expect(tree).toHaveLength(1);
+      expect(tree[0].id).toBe(CAT_ID_1);
+      expect(tree[0].children).toEqual([]);
+    });
+
+    it('does not recurse forever when the data contains a parent cycle', async () => {
+      const a = { ...baseCategory, id: 'a', parentId: 'b' };
+      const b = { ...baseCategory, id: 'b', parentId: 'a' };
+      mockCategoryRepository.findById.mockResolvedValue(a);
+      mockCategoryRepository.findAllSortedByName.mockResolvedValue([a, b]);
+
+      const tree = await service.getCategoryTree('a');
+
+      // a → b → (a again is skipped)
+      expect(tree).toHaveLength(1);
+      expect(tree[0].id).toBe('b');
+      expect(tree[0].children?.[0]?.id).toBe('a');
+      expect(tree[0].children?.[0]?.children).toEqual([]);
+    });
+
     it('throws CategoryNotFoundException when rootParentId is not found', async () => {
       mockCategoryRepository.findById.mockResolvedValue(null);
 
