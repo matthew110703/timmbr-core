@@ -131,10 +131,17 @@ jobs:
 
       # Free Render instances have no pre-deploy command, so migrations run
       # here, before the new code goes live (keep migrations additive).
+      # Retries cover Neon waking a suspended (scale-to-zero) compute.
       - name: Migrate staging database
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: pnpm exec prisma migrate deploy
+        run: |
+          for i in 1 2 3; do
+            pnpm exec prisma migrate deploy && exit 0
+            echo "Attempt $i failed; retrying in 10s…"
+            sleep 10
+          done
+          exit 1
 
       - name: Trigger Render deploy
         id: trigger
