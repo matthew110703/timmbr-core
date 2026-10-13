@@ -29,6 +29,14 @@ export class CategoryRepository {
     });
   }
 
+  async findSlugsStartingWith(prefix: string): Promise<string[]> {
+    const rows = await this.prisma.category.findMany({
+      where: { slug: { startsWith: prefix } },
+      select: { slug: true },
+    });
+    return rows.map((row) => row.slug);
+  }
+
   async findAllSortedByName(): Promise<Category[]> {
     return this.prisma.category.findMany({
       orderBy: { name: 'asc' },

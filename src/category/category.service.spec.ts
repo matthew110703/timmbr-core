@@ -7,6 +7,7 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 import { GetCategoriesQueryDto } from './dto/get-categories-query.dto';
 import {
   CategoryAlreadyExistsException,
+  CategoryCycleException,
   CategoryHasChildrenException,
   CategoryNotFoundException,
   CategorySelfReferentialException,
@@ -58,6 +59,7 @@ const mockCategoryRepository = {
   update: jest.fn(),
   delete: jest.fn(),
   deleteTree: jest.fn(),
+  findSlugsStartingWith: jest.fn(),
 };
 
 describe('CategoryService', () => {
@@ -363,6 +365,84 @@ describe('CategoryService', () => {
       mockCategoryRepository.findById.mockResolvedValue(null);
 
       await expect(service.delete(NON_EXISTENT_ID)).rejects.toThrow(CategoryNotFoundException);
+    });
+  });
+  // ─── slugs, cycles, listing context ─────────────────────────────────────────
+
+  describe('unique slugs', () => {
+    it('takes the first free numbered slug when the plain one is used', async () => {
+      mockCategoryRepository.findFirst.mockResolvedValue(null);
+      mockCategoryRepository.findSlugsStartingWith.mockResolvedValue([
+        'electronics',
+        'electronics-2',
+      ]);
+      mockCategoryRepository.create.mockResolvedValue(baseCategory);
+
+      await service.create({ name: 'Electronics', status: CategoryStatus.ACTIVE });
+
+      expect(mockCategoryRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ slug: 'electronics-3' }),
+      );
+    });
+  });
+
+  describe('moving a category', () => {
+    it('rejects a move under its own descendant', async () => {
+      mockCategoryRepository.findById.mockResolvedValue(baseCategory);
+      mockCategoryRepository.findAllSortedByName.mockResolvedValue([
+        baseCategory,
+        { ...subCategory, parentId: CAT_ID_1 },
+      ]);
+
+      const error = await service.update(CAT_ID_1, { parentId: CAT_ID_2 }).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(CategoryCycleException);
+      expect(mockCategoryRepository.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getListingContext', () => {
+    const leaf = { ...subCategory, parentId: CAT_ID_1 };
+    const grandchild = {
+      ...subCategory,
+      id: '33333333-3333-3333-3333-333333333333',
+      name: 'Android',
+      slug: 'android',
+      parentId: CAT_ID_2,
+      logoUrl: null,
+    };
+
+    it('returns the breadcrumb from the root and the active children', async () => {
+      mockCategoryRepository.findAllSortedByName.mockResolvedValue([
+        baseCategory,
+        leaf,
+        grandchild,
+        { ...grandchild, id: 'x', slug: 'hidden', status: CategoryStatus.INACTIVE },
+      ]);
+
+      const context = await service.getListingContext(leaf.slug);
+
+      expect(context.breadcrumb.map((c) => c.slug)).toEqual([baseCategory.slug, leaf.slug]);
+      expect(context.children).toEqual([{ name: 'Android', slug: 'android', logoUrl: null }]);
+    });
+
+    it('re-reads the database once before answering 404 for an unknown slug', async () => {
+      mockCategoryRepository.findAllSortedByName.mockResolvedValue([baseCategory]);
+
+      const error = await service.getListingContext('nope').catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(CategoryNotFoundException);
+      expect(mockCategoryRepository.findAllSortedByName).toHaveBeenCalledTimes(2);
+    });
+
+    it('hides a category under an inactive ancestor', async () => {
+      mockCategoryRepository.findAllSortedByName.mockResolvedValue([
+        { ...baseCategory, status: CategoryStatus.INACTIVE },
+        leaf,
+      ]);
+
+      const error = await service.getListingContext(leaf.slug).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(CategoryNotFoundException);
     });
   });
 });
