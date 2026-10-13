@@ -22,4 +22,5 @@ export const APP_ROUTES = {
   HEALTH: 'health',
   PAGES: 'pages',
   ATTRIBUTE_DEFINITIONS: 'attribute-definitions',
+  CATALOG: 'catalog',
 } as const;
