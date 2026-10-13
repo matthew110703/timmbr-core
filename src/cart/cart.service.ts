@@ -8,15 +8,40 @@ import { CartMapper } from './cart.mapper';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 import { CartResponseDto } from './dto/cart-response.dto';
+import { CartCountResponse } from './dto/cart-count-response.dto';
 import { CartContext, RedisCart, RedisCartItem } from './types/cart.types';
 import {
   CartItemNotFoundException,
+  CartItemOutOfStockException,
   CartNotFoundException,
+  CartQuantityLimitException,
   CartVariantUnavailableException,
 } from '@/common/exceptions/cart.exception';
-import { calculateCartTotals, formatAmount, roundToTwoDecimals } from './cart.helper';
+import {
+  calculateCartTotals,
+  formatAmount,
+  freeStock,
+  maxLineQuantity,
+  roundToTwoDecimals,
+  type StockRow,
+} from './cart.helper';
 import { CART_CONSTANTS } from './cart.constants';
 import { Prisma, ProductStatus, VariantStatus } from '@prisma/client';
+
+const STOCK_SELECT = { select: { quantity: true, reservedQuantity: true } } as const;
+
+/**
+ * Throws when a cart line can't hold `quantity`: out of stock (with what's left) when stock is
+ * the limit, otherwise the per-item limit. Adding to the cart never reserves stock; orders do.
+ */
+export function assertLineQuantity(quantity: number, inventory: StockRow): void {
+  const available = freeStock(inventory);
+  if (quantity <= Math.min(available, CART_CONSTANTS.MAX_ITEM_QUANTITY)) return;
+  if (available < CART_CONSTANTS.MAX_ITEM_QUANTITY) {
+    throw new CartItemOutOfStockException(available);
+  }
+  throw new CartQuantityLimitException(CART_CONSTANTS.MAX_ITEM_QUANTITY);
+}
 
 @Injectable()
 export class CartService {
@@ -93,6 +118,24 @@ export class CartService {
     return CartMapper.toEmptyResponse();
   }
 
+  /**
+   * Units in the cart and which variants they are: the header badge, and "in your cart" on
+   * product pages. Cheap: no re-pricing, no product data.
+   */
+  async getCount(context: CartContext): Promise<CartCountResponse> {
+    let lines: { variantId: string; quantity: number }[] = [];
+    if (context.userId) {
+      lines = await this.cartRepository.findActiveLines(context.userId);
+    } else if (context.guestCartId) {
+      const redisCart = await this.cartRedisRepository.getGuestCart(context.guestCartId);
+      lines = (redisCart?.items ?? []).map(({ variantId, quantity }) => ({ variantId, quantity }));
+    }
+    return {
+      count: lines.reduce((sum, line) => sum + line.quantity, 0),
+      items: lines.map(({ variantId, quantity }) => ({ variantId, quantity })),
+    };
+  }
+
   async addItem(
     context: CartContext,
     dto: AddCartItemDto,
@@ -104,6 +147,7 @@ export class CartService {
         product: {
           select: { id: true, title: true, status: true, gstRate: true },
         },
+        inventory: STOCK_SELECT,
       },
     });
 
@@ -122,6 +166,8 @@ export class CartService {
     // 2. Authenticated branch
     if (context.userId) {
       const cart = await this.cartRepository.findOrCreateCart(context.userId);
+      const inCart = cart.items?.find((i) => i.variantId === variant.id)?.quantity ?? 0;
+      assertLineQuantity(inCart + dto.quantity, variant.inventory);
 
       await this.cartRepository.upsertCartItem(cart.id, {
         productId: variant.productId,
@@ -186,6 +232,8 @@ export class CartService {
     }
 
     const existingIndex = redisCart.items.findIndex((i) => i.variantId === dto.variantId);
+    const inCart = existingIndex > -1 ? redisCart.items[existingIndex].quantity : 0;
+    assertLineQuantity(inCart + dto.quantity, variant.inventory);
     if (existingIndex > -1) {
       const existing = redisCart.items[existingIndex];
       const newQty = existing.quantity + dto.quantity;
@@ -238,7 +286,12 @@ export class CartService {
 
       const variant = await this.prisma.productVariant.findUnique({
         where: { id: item.variantId },
+        include: { inventory: STOCK_SELECT },
       });
+      // Lowering a quantity is always allowed; raising it must fit the stock.
+      if (dto.quantity > item.quantity) {
+        assertLineQuantity(dto.quantity, variant?.inventory ?? null);
+      }
       const unitPrice = variant ? Number(variant.price) : Number(item.unitPrice);
       const totalPrice = roundToTwoDecimals(unitPrice * dto.quantity);
 
@@ -287,7 +340,11 @@ export class CartService {
 
       const variant = await this.prisma.productVariant.findUnique({
         where: { id: item.variantId },
+        include: { inventory: STOCK_SELECT },
       });
+      if (dto.quantity > item.quantity) {
+        assertLineQuantity(dto.quantity, variant?.inventory ?? null);
+      }
       const unitPrice = variant ? Number(variant.price) : Number(item.unitPrice);
 
       item.quantity = dto.quantity;
@@ -421,6 +478,7 @@ export class CartService {
       where: { id: { in: guestVariantIds } },
       include: {
         product: { select: { id: true, title: true, status: true } },
+        inventory: STOCK_SELECT,
       },
     });
 
@@ -442,9 +500,12 @@ export class CartService {
 
         const catalogPrice = Number(variant.price);
         const existingAuthItem = authItemMap.get(guestItem.variantId);
+        // A merged line never exceeds what can be sold (nor the per-item limit), but never
+        // shrinks a line the account already had.
+        const cap = Math.max(maxLineQuantity(variant.inventory), existingAuthItem?.quantity ?? 0);
 
         if (existingAuthItem) {
-          const newQty = existingAuthItem.quantity + guestItem.quantity;
+          const newQty = Math.min(existingAuthItem.quantity + guestItem.quantity, cap);
           const newTotal = roundToTwoDecimals(catalogPrice * newQty);
           await tx.cartItem.update({
             where: { id: existingAuthItem.id },
@@ -457,7 +518,9 @@ export class CartService {
             },
           });
         } else {
-          const newTotal = roundToTwoDecimals(catalogPrice * guestItem.quantity);
+          const quantity = Math.min(guestItem.quantity, cap);
+          if (quantity < 1) continue; // Sold out since it was added
+          const newTotal = roundToTwoDecimals(catalogPrice * quantity);
           await tx.cartItem.create({
             data: {
               cartId: authCart.id,
@@ -465,7 +528,7 @@ export class CartService {
               variantId: variant.id,
               name: `${variant.product.title} - ${variant.sku}`,
               sku: variant.sku,
-              quantity: guestItem.quantity,
+              quantity,
               unitPrice: new Prisma.Decimal(catalogPrice),
               totalPrice: new Prisma.Decimal(newTotal),
               metaData: (guestItem.metaData as Prisma.InputJsonValue) ?? Prisma.DbNull,

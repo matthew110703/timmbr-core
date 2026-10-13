@@ -44,6 +44,14 @@ export class CartRepository {
     });
   }
 
+  /** The user's active cart lines, variant and quantity only (header badge, "in your cart"). */
+  async findActiveLines(userId: string): Promise<{ variantId: string; quantity: number }[]> {
+    return this.prisma.cartItem.findMany({
+      where: { cart: { userId, status: CartStatus.ACTIVE } },
+      select: { variantId: true, quantity: true },
+    });
+  }
+
   // Alias for backward compatibility
   async findCartByUserId(userId: string): Promise<CartWithItems | null> {
     return this.findActiveCartByUserId(userId);

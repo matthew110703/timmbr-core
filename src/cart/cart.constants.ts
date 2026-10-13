@@ -5,6 +5,8 @@ export const CART_CONSTANTS = {
   GUEST_CART_COOKIE: 'timmbr_guest_cart',
   REDIS_KEY_PREFIX: 'cart:guest:',
   DEFAULT_CURRENCY: 'INR',
+  /** Most units of one variant a cart can hold. */
+  MAX_ITEM_QUANTITY: 10,
 } as const;
 
 export function getGuestCartTtlSeconds(): number {

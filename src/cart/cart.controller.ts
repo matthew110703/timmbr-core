@@ -19,6 +19,7 @@ import { OptionalAuth, ResponseMessage } from '@/common/decorators';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 import { CartResponseDto } from './dto/cart-response.dto';
+import { CartCountResponse } from './dto/cart-count-response.dto';
 import { CART_CONSTANTS, getGuestCartCookieOptions } from './cart.constants';
 import { JwtPayload } from '@/auth/types/jwt.types';
 import { CartContext } from './types/cart.types';
@@ -43,6 +44,14 @@ export class CartController {
   async getCart(@Req() req: FastifyRequest): Promise<CartResponseDto> {
     const context = this.extractContext(req);
     return this.cartService.getCart(context);
+  }
+
+  @Get(CART_ROUTES.COUNT)
+  @OptionalAuth()
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Cart count retrieved successfully.')
+  async getCount(@Req() req: FastifyRequest): Promise<CartCountResponse> {
+    return this.cartService.getCount(this.extractContext(req));
   }
 
   @Post(CART_ROUTES.ITEMS)

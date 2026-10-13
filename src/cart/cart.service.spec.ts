@@ -1,13 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { CartService } from './cart.service';
 import { CartRepository } from './cart.repository';
 import { CartRedisRepository } from './cart-redis.repository';
 import { CartPricingSync } from './cart.pricing-sync';
 import { PrismaService } from '@/prisma/prisma.service';
 import {
   CartItemNotFoundException,
+  CartItemOutOfStockException,
+  CartQuantityLimitException,
   CartVariantUnavailableException,
 } from '@/common/exceptions/cart.exception';
+import { CartService, assertLineQuantity } from './cart.service';
 import { ProductStatus, VariantStatus } from '@prisma/client';
 import { RedisCart } from './types/cart.types';
 
@@ -30,6 +32,7 @@ describe('CartService', () => {
       status: ProductStatus.ACTIVE,
       gstRate: 18,
     },
+    inventory: { quantity: 50, reservedQuantity: 0 },
   };
 
   beforeEach(async () => {
@@ -733,6 +736,181 @@ describe('CartService', () => {
       expect(cartRepository.executeInTransaction).toHaveBeenCalled();
       expect(cartRedisRepository.deleteGuestCart).toHaveBeenCalledWith('guest-1');
       expect(result.subtotal).toBe('3000.00');
+    });
+  });
+
+  describe('stock and limits', () => {
+    const stock = (quantity: number, reservedQuantity = 0) => ({ quantity, reservedQuantity });
+
+    it('allows a line up to the free stock and the per-item limit', () => {
+      expect(() => assertLineQuantity(3, stock(5, 2))).not.toThrow();
+      expect(() => assertLineQuantity(10, stock(50))).not.toThrow();
+    });
+
+    it('reports what is left when stock is the limit', () => {
+      expect(() => assertLineQuantity(4, stock(5, 2))).toThrow(CartItemOutOfStockException);
+      expect(() => assertLineQuantity(1, null)).toThrow(CartItemOutOfStockException);
+      try {
+        assertLineQuantity(4, stock(5, 2));
+      } catch (error) {
+        expect((error as CartItemOutOfStockException).getResponse()).toMatchObject({
+          code: 'CART_ITEM_OUT_OF_STOCK',
+          details: { available: 3 },
+        });
+      }
+    });
+
+    it('reports the per-item limit when stock is plentiful', () => {
+      expect(() => assertLineQuantity(11, stock(50))).toThrow(CartQuantityLimitException);
+    });
+
+    it('rejects adding past the stock, counting what is already in the guest cart', async () => {
+      prisma.productVariant.findUnique.mockResolvedValue({
+        ...mockActiveVariant,
+        inventory: stock(3),
+      });
+      cartRedisRepository.getGuestCart.mockResolvedValue({
+        id: 'guest-1',
+        status: 'ACTIVE',
+        subtotal: '3000.00',
+        grandTotal: '3000.00',
+        currency: 'INR',
+        items: [
+          {
+            id: 'item-1',
+            cartId: 'guest-1',
+            productId: 'prod-1',
+            variantId: 'var-1',
+            name: 'Timmbr Chair - SKU-001',
+            sku: 'SKU-001',
+            quantity: 2,
+            unitPrice: '1500.00',
+            totalPrice: '3000.00',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      await expect(
+        service.addItem(
+          { userId: null, guestCartId: 'guest-1' },
+          { variantId: 'var-1', quantity: 2 },
+        ),
+      ).rejects.toBeInstanceOf(CartItemOutOfStockException);
+      expect(cartRedisRepository.saveGuestCart).not.toHaveBeenCalled();
+    });
+
+    it('rejects adding past the stock for a signed-in cart', async () => {
+      prisma.productVariant.findUnique.mockResolvedValue({
+        ...mockActiveVariant,
+        inventory: stock(0),
+      });
+      cartRepository.findOrCreateCart.mockResolvedValue({ id: 'auth-cart-1', items: [] });
+
+      await expect(
+        service.addItem(
+          { userId: 'user-1', guestCartId: null },
+          { variantId: 'var-1', quantity: 1 },
+        ),
+      ).rejects.toBeInstanceOf(CartItemOutOfStockException);
+      expect(cartRepository.upsertCartItem).not.toHaveBeenCalled();
+    });
+
+    it('caps merged lines at what can be sold and skips sold-out items', async () => {
+      cartRedisRepository.getGuestCart.mockResolvedValue({
+        id: 'guest-1',
+        status: 'ACTIVE',
+        subtotal: '0.00',
+        grandTotal: '0.00',
+        currency: 'INR',
+        items: [
+          {
+            id: 'g1',
+            cartId: 'guest-1',
+            productId: 'prod-1',
+            variantId: 'var-1',
+            name: 'A',
+            sku: 'A',
+            quantity: 8,
+            unitPrice: '1500.00',
+            totalPrice: '12000.00',
+            createdAt: '',
+            updatedAt: '',
+          },
+          {
+            id: 'g2',
+            cartId: 'guest-1',
+            productId: 'prod-2',
+            variantId: 'var-2',
+            name: 'B',
+            sku: 'B',
+            quantity: 1,
+            unitPrice: '900.00',
+            totalPrice: '900.00',
+            createdAt: '',
+            updatedAt: '',
+          },
+        ],
+        createdAt: '',
+        updatedAt: '',
+      });
+      cartRepository.findOrCreateCart.mockResolvedValue({ id: 'auth-cart-1', userId: 'user-1' });
+      prisma.productVariant.findMany.mockResolvedValue([
+        { ...mockActiveVariant, inventory: stock(5) },
+        { ...mockActiveVariant, id: 'var-2', productId: 'prod-2', inventory: stock(0) },
+      ]);
+      const create = jest.fn();
+      cartRepository.executeInTransaction.mockImplementation(
+        (txCallback: (tx: unknown) => Promise<unknown>) =>
+          txCallback({
+            cartItem: { findMany: jest.fn().mockResolvedValue([]), create, update: jest.fn() },
+            cart: { update: jest.fn() },
+          }),
+      );
+      cartRepository.findActiveCartByUserId.mockResolvedValue(null);
+
+      await service.mergeCart('user-1', 'guest-1');
+
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(create.mock.calls[0][0].data).toMatchObject({ variantId: 'var-1', quantity: 5 });
+    });
+  });
+
+  describe('getCount', () => {
+    it('sums the guest cart and lists its variants', async () => {
+      cartRedisRepository.getGuestCart.mockResolvedValue({
+        items: [
+          { variantId: 'v1', quantity: 2, sku: 'A' },
+          { variantId: 'v2', quantity: 3, sku: 'B' },
+        ],
+      });
+      await expect(service.getCount({ userId: null, guestCartId: 'g' })).resolves.toEqual({
+        count: 5,
+        items: [
+          { variantId: 'v1', quantity: 2 },
+          { variantId: 'v2', quantity: 3 },
+        ],
+      });
+    });
+
+    it('reads a signed-in cart from the database', async () => {
+      cartRepository.findActiveLines = jest
+        .fn()
+        .mockResolvedValue([{ variantId: 'v1', quantity: 4 }]);
+      await expect(service.getCount({ userId: 'u', guestCartId: null })).resolves.toEqual({
+        count: 4,
+        items: [{ variantId: 'v1', quantity: 4 }],
+      });
+    });
+
+    it('is empty without a cart', async () => {
+      await expect(service.getCount({ userId: null, guestCartId: null })).resolves.toEqual({
+        count: 0,
+        items: [],
+      });
     });
   });
 });

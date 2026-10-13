@@ -1,3 +1,17 @@
+import { CART_CONSTANTS } from './cart.constants';
+
+export type StockRow = { quantity: number; reservedQuantity: number } | null;
+
+/** Units free to sell: on hand minus those reserved by pending orders. */
+export function freeStock(inventory: StockRow): number {
+  return inventory ? Math.max(0, inventory.quantity - inventory.reservedQuantity) : 0;
+}
+
+/** The most one cart line can hold: free stock, capped at the per-item limit. */
+export function maxLineQuantity(inventory: StockRow): number {
+  return Math.min(freeStock(inventory), CART_CONSTANTS.MAX_ITEM_QUANTITY);
+}
+
 export function roundToTwoDecimals(amount: number): number {
   return Math.round(amount * 100) / 100;
 }
