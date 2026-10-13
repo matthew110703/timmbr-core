@@ -117,8 +117,12 @@ const TREE: Tree = {
 let created = 0;
 let existing = 0;
 
-async function ensure(name: string, parentId: string | null): Promise<string> {
-  const slug = generateSlug(name);
+async function ensure(
+  name: string,
+  parentId: string | null,
+  parentSlug?: string,
+): Promise<{ id: string; slug: string }> {
+  let slug = generateSlug(name);
   // Match on name too: older rows may have a different slug for the same name
   // (e.g. "storage-cabinetry" vs today's "storage-and-cabinetry").
   const found = await prisma.category.findFirst({
@@ -126,24 +130,28 @@ async function ensure(name: string, parentId: string | null): Promise<string> {
   });
   if (found) {
     existing++;
-    return found.id;
+    return { id: found.id, slug: found.slug };
+  }
+  // Slugs are globally unique: the same name under another parent gets the parent's slug prefixed.
+  if (parentSlug && (await prisma.category.findUnique({ where: { slug } }))) {
+    slug = `${parentSlug}-${slug}`;
   }
   const category = await prisma.category.create({
     data: { name, slug, parentId, status: CategoryStatus.ACTIVE },
   });
   created++;
   console.log(`  + ${name} (${slug})`);
-  return category.id;
+  return { id: category.id, slug: category.slug };
 }
 
-async function seed(tree: Tree | string[], parentId: string | null) {
+async function seed(tree: Tree | string[], parentId: string | null, parentSlug?: string) {
   if (Array.isArray(tree)) {
-    for (const name of tree) await ensure(name, parentId);
+    for (const name of tree) await ensure(name, parentId, parentSlug);
     return;
   }
   for (const [name, children] of Object.entries(tree)) {
-    const id = await ensure(name, parentId);
-    await seed(children, id);
+    const { id, slug } = await ensure(name, parentId, parentSlug);
+    await seed(children, id, slug);
   }
 }
 

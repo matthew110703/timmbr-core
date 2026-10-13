@@ -125,9 +125,11 @@ async function main() {
 
   const categoryMap = new Map<string, string>();
   for (const c of categoriesData) {
-    let cat = await prisma.category.findFirst({
-      where: { slug: c.slug, parentId: null },
-    });
+    // Category slugs are globally unique.
+    let cat = await prisma.category.findUnique({ where: { slug: c.slug } });
+    if (cat?.parentId) {
+      console.warn(`  ! "${c.slug}" exists under another parent; reusing it as is`);
+    }
     if (!cat) {
       cat = await prisma.category.create({ data: c });
     } else {
@@ -271,6 +273,8 @@ async function main() {
       images: [
         {
           storageKey: 'products/koto-boucle-curved-accent-chair/images/oatmeal-hero.jpg',
+          // Shows this variant only (the product page swaps images with the option).
+          variantSku: 'CHR-KOTO-BOU-OAT',
           sourceUrl:
             'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=1200&q=80',
           altText: 'Koto Bouclé Curved Accent Chair in warm cream bouclé fabric',
@@ -287,6 +291,8 @@ async function main() {
         },
         {
           storageKey: 'products/koto-boucle-curved-accent-chair/images/charcoal-variant.jpg',
+          // Shows this variant only (the product page swaps images with the option).
+          variantSku: 'CHR-KOTO-BOU-CHR',
           sourceUrl:
             'https://images.unsplash.com/photo-1598300042247-d088f8ab3a91?auto=format&fit=crop&w=1200&q=80',
           altText: 'Charcoal grey lounge chair in modern minimalist corner',
@@ -376,6 +382,8 @@ async function main() {
       images: [
         {
           storageKey: 'products/soren-mid-century-3-seater-sofa/images/cognac-leather-hero.jpg',
+          // Shows this variant only (the product page swaps images with the option).
+          variantSku: 'SOF-SOREN-LTH-CGN',
           sourceUrl:
             'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=1200&q=80',
           altText: 'Søren Mid-Century 3-Seater Sofa in warm living room with house plants',
@@ -392,6 +400,8 @@ async function main() {
         },
         {
           storageKey: 'products/soren-mid-century-3-seater-sofa/images/mineral-grey-linen.jpg',
+          // Shows this variant only (the product page swaps images with the option).
+          variantSku: 'SOF-SOREN-WVE-GRY',
           sourceUrl:
             'https://images.unsplash.com/photo-1484101403633-562f891dc89a?auto=format&fit=crop&w=1200&q=80',
           altText: 'Mineral grey tailored fabric finish styled in modern interior',
@@ -400,6 +410,8 @@ async function main() {
         },
         {
           storageKey: 'products/soren-mid-century-3-seater-sofa/images/forest-emerald-velvet.jpg',
+          // Shows this variant only (the product page swaps images with the option).
+          variantSku: 'SOF-SOREN-BC-GRN',
           sourceUrl:
             'https://images.unsplash.com/photo-1540574163026-643ea20ade25?auto=format&fit=crop&w=1200&q=80',
           altText: 'Deep forest green luxury upholstery variant',
@@ -570,6 +582,8 @@ async function main() {
       images: [
         {
           storageKey: 'products/aura-fluted-solid-ash-sideboard/images/blonde-ash-hero.jpg',
+          // Shows this variant only (the product page swaps images with the option).
+          variantSku: 'CRD-AURA-ASH-160-NAT',
           sourceUrl:
             'https://images.unsplash.com/photo-1595428774223-ef52624120d2?auto=format&fit=crop&w=1200&q=80',
           altText:
@@ -587,6 +601,8 @@ async function main() {
         },
         {
           storageKey: 'products/aura-fluted-solid-ash-sideboard/images/dark-espresso-variant.jpg',
+          // Shows this variant only (the product page swaps images with the option).
+          variantSku: 'CRD-AURA-ASH-200-ESP',
           sourceUrl:
             'https://images.unsplash.com/photo-1533090481720-856c6e3c1fdc?auto=format&fit=crop&w=1200&q=80',
           altText: 'Espresso dark ash finish variant in dining room setting',
@@ -781,6 +797,18 @@ async function main() {
       }
 
       console.log(`  ✓ Variant: ${v.sku} (₹${v.price}, Stock: ${v.stock})`);
+    }
+
+    // 3.5 Variant images: images marked with a variantSku belong to that variant.
+    for (const img of item.images) {
+      const variantSku = 'variantSku' in img ? img.variantSku : undefined;
+      if (!variantSku) continue;
+      const variant = await prisma.productVariant.findUnique({ where: { sku: variantSku } });
+      if (!variant) continue;
+      await prisma.productImage.updateMany({
+        where: { productId: product.id, storageKey: img.storageKey },
+        data: { variantId: variant.id },
+      });
     }
   }
 
