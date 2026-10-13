@@ -24,4 +24,7 @@ model ProductVariant {
   orderItems      OrderItem[]
   cartItems       CartItem[]
   wishlistItems   WishlistItem[]
+
+  // One default per product: partial unique index in SQL (ProductVariant_one_default_per_product).
+  @@index([productId, status])
 }

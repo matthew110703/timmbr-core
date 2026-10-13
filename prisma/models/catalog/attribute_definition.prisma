@@ -3,6 +3,14 @@ enum AttributeType {
   INTEGER
   DECIMAL
   LIST
+  BOOLEAN
+}
+
+/// How a filterable attribute is shown in the storefront filter panel.
+enum FilterDisplay {
+  CHECKBOX
+  SWATCH
+  TOGGLE
 }
 
 enum AttributeScope {
@@ -17,6 +25,10 @@ model AttributeDefinition {
   unit         String?
   scope        AttributeScope
   isFilterable Boolean        @default(false)
+  /// URL key of a filterable global definition (e.g. "material"). Immutable once set.
+  key          String?
+  displayType  FilterDisplay  @default(CHECKBOX)
+  filterOrder  Int            @default(0)
   productId    String?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
@@ -24,4 +36,7 @@ model AttributeDefinition {
   // Relations
   product Product?         @relation(fields: [productId], references: [id])
   values  AttributeValue[]
+  options AttributeOption[]
+
+  @@index([productId])
 }

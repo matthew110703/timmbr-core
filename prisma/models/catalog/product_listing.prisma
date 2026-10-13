@@ -1,0 +1,41 @@
+/// Read model for the storefront listing (PLP): one row per listable product.
+/// Maintained by Postgres triggers via refresh_product_listing() — never write it from the app.
+/// Listable = product ACTIVE, ≥1 ACTIVE variant, whole category path ACTIVE, INR price.
+model ProductListing {
+  productId           String   @id
+  slug                String
+  title               String
+  brandId             String?
+  brandName           String?
+  /// lower(title + " " + brand name), whitespace collapsed: what search matches word by word.
+  searchText          String   @default("")
+  /// The variant the price comes from (default ACTIVE, else oldest): what a card saves or adds.
+  defaultVariantId    String?
+  categoryId          String
+  /// The product's category and all its ancestors.
+  categoryPath        String[] @default([])
+  price               Decimal  @db.Decimal(12, 2)
+  compareAtPrice      Decimal? @db.Decimal(12, 2)
+  currency            String
+  discountPct         Int      @default(0)
+  hasMultipleVariants Boolean  @default(false)
+  inStock             Boolean  @default(false)
+  coverImageKey       String?
+  coverAlt            String?
+  /// Distinct AttributeOption codes of the product and its ACTIVE variants.
+  optionCodes         Int[]    @default([])
+  createdAt           DateTime
+  refreshedAt         DateTime @default(now())
+
+  // Relations
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([categoryPath], type: Gin)
+  @@index([optionCodes], type: Gin)
+  @@index([searchText(ops: raw("gin_trgm_ops"))], type: Gin, map: "ProductListing_searchText_trgm_idx")
+  @@index([inStock(sort: Desc), price, productId], map: "ProductListing_price_asc_idx")
+  @@index([inStock(sort: Desc), price(sort: Desc), productId], map: "ProductListing_price_desc_idx")
+  @@index([inStock(sort: Desc), createdAt(sort: Desc), productId], map: "ProductListing_newest_idx")
+  @@index([inStock(sort: Desc), discountPct(sort: Desc), productId], map: "ProductListing_discount_idx")
+  @@index([brandId])
+}

@@ -1,0 +1,35 @@
+/// One allowed value of a global attribute (e.g. Material → "Teak").
+/// Filterable values point here, so the storefront filters on stable ids, not free text.
+model AttributeOption {
+  id           String   @id @default(uuid())
+  /// Compact integer id, used by the listing read model (int arrays are small and fast to count).
+  code         Int      @unique @default(autoincrement())
+  definitionId String
+  label        String
+  /// URL value (e.g. "teak"). Immutable once set.
+  slug         String
+  /// Hex colour for SWATCH filters (e.g. "#5C3A21").
+  swatchHex    String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  definition AttributeDefinition    @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  values     AttributeValueOption[]
+
+  @@unique([definitionId, slug])
+}
+
+/// The options an AttributeValue selects (one for STRING/BOOLEAN, several for LIST).
+model AttributeValueOption {
+  attributeValueId String
+  optionId         String
+
+  // Relations
+  attributeValue AttributeValue  @relation(fields: [attributeValueId], references: [id], onDelete: Cascade)
+  option         AttributeOption @relation(fields: [optionId], references: [id], onDelete: Restrict)
+
+  @@id([attributeValueId, optionId])
+  @@index([optionId])
+}

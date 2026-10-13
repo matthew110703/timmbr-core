@@ -28,4 +28,9 @@ model Product {
   orderItems      OrderItem[]
   cartItems       CartItem[]
   wishlistItems   WishlistItem[]
+  listing         ProductListing?
+
+  @@index([categoryId])
+  @@index([brandId])
+  @@index([status])
 }
