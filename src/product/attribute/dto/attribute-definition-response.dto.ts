@@ -1,4 +1,4 @@
-import { AttributeScope, AttributeType } from '@prisma/client';
+import { AttributeScope, AttributeType, FilterDisplay } from '@prisma/client';
 
 export class AttributeDefinitionResponseDto {
   id!: string;
@@ -7,6 +7,9 @@ export class AttributeDefinitionResponseDto {
   scope!: AttributeScope;
   unit!: string | null;
   isFilterable!: boolean;
+  key!: string | null;
+  displayType!: FilterDisplay;
+  filterOrder!: number;
   productId!: string | null;
   usageCount!: number;
   createdAt!: Date;

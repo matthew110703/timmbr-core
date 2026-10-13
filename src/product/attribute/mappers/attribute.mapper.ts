@@ -1,4 +1,5 @@
-import { AttributeDefinition, AttributeValue } from '@prisma/client';
+import { AttributeDefinition, AttributeOption, AttributeValue } from '@prisma/client';
+import { AttributeOptionResponseDto } from '../dto/attribute-option-response.dto';
 import { AttributeDefinitionResponseDto } from '../dto/attribute-definition-response.dto';
 import { AttributeValueResponseDto } from '../dto/attribute-value-response.dto';
 import { AttributeValueValidator } from '../validators/attribute-value.validator';
@@ -19,6 +20,19 @@ export type AttributeValueWithDefinition = AttributeValue & {
 };
 
 export class AttributeMapper {
+  static toOptionResponse(option: AttributeOption): AttributeOptionResponseDto {
+    return {
+      id: option.id,
+      definitionId: option.definitionId,
+      label: option.label,
+      slug: option.slug,
+      swatchHex: option.swatchHex ?? null,
+      sortOrder: option.sortOrder,
+      createdAt: option.createdAt,
+      updatedAt: option.updatedAt,
+    };
+  }
+
   static toDefinitionResponse(def: AttributeDefinitionWithCount): AttributeDefinitionResponseDto {
     return {
       id: def.id,
@@ -27,6 +41,9 @@ export class AttributeMapper {
       scope: def.scope,
       unit: def.unit,
       isFilterable: def.isFilterable,
+      key: def.key ?? null,
+      displayType: def.displayType,
+      filterOrder: def.filterOrder,
       productId: def.productId,
       usageCount: def._count?.values ?? 0,
       createdAt: def.createdAt,

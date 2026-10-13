@@ -3,6 +3,10 @@ export const ATTRIBUTE_ROUTES = {
     ROOT: '',
     BY_ID: ':id',
   },
+  OPTIONS: {
+    ROOT: ':id/options',
+    BY_ID: ':id/options/:optionId',
+  },
   PRODUCT_ASSIGNMENTS: {
     ROOT: ':productId/attributes',
     BY_DEFINITION: ':productId/attributes/:definitionId',

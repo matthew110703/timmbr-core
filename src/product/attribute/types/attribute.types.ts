@@ -1,6 +1,6 @@
 import { AttributeType } from '@prisma/client';
 
-export type TypedAttributeValue = string | number | string[];
+export type TypedAttributeValue = string | number | boolean | string[];
 
 export interface ProductAttributeSpecification {
   name: string;

@@ -96,6 +96,12 @@ export class AttributeValueValidator {
         return JSON.stringify(stringList);
       }
 
+      case AttributeType.BOOLEAN: {
+        if (input === true || input === 'true') return 'true';
+        if (input === false || input === 'false') return 'false';
+        throw new InvalidAttributeValueTypeException(type, 'Value must be true or false.');
+      }
+
       default:
         throw new InvalidAttributeValueTypeException(
           type,
@@ -130,6 +136,9 @@ export class AttributeValueValidator {
           return [storedValue];
         }
       }
+
+      case AttributeType.BOOLEAN:
+        return storedValue === 'true';
 
       default:
         return storedValue;

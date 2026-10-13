@@ -6,8 +6,10 @@ import { AttributeDefinitionRepository } from '../repositories/attribute-definit
 import { ProductRepository } from '../../product.repository';
 import { VariantRepository } from '../../variant/variant.repository';
 import { ProductCacheService } from '../../cache/product-cache.service';
+import { AttributeOptionRepository } from '../repositories/attribute-option.repository';
 import {
   AttributeDefinitionNotFoundException,
+  AttributeOptionNotFoundException,
   AttributeOwnershipMismatchException,
   AttributeScopeMismatchException,
   AttributeValueAlreadyAssignedException,
@@ -23,6 +25,18 @@ describe('AttributeValueService', () => {
   let mockAttributeDefinitionRepository: any;
   let mockProductRepository: any;
   let mockVariantRepository: any;
+  let mockOptionRepository: { findByDefinition: jest.Mock };
+
+  /** The shared vocabulary of the global test definitions. */
+  const OPTIONS: Record<string, { id: string; slug: string; label: string }[]> = {
+    'def-prod-1': [
+      { id: 'opt-velvet', slug: 'velvet', label: 'Velvet' },
+      { id: 'opt-leather', slug: 'leather', label: 'Leather' },
+      { id: 'opt-teak', slug: 'teak-wood', label: 'Teak Wood' },
+    ],
+    'def-var-1': [{ id: 'opt-black', slug: 'black', label: 'Black' }],
+    'def-bool': [{ id: 'opt-yes', slug: 'yes', label: 'Yes' }],
+  };
 
   const mockProductDef: any = {
     id: 'def-prod-1',
@@ -78,6 +92,10 @@ describe('AttributeValueService', () => {
       findById: jest.fn(),
     };
 
+    mockOptionRepository = {
+      findByDefinition: jest.fn((id: string) => Promise.resolve(OPTIONS[id] ?? [])),
+    };
+
     const mockProductCacheService = {
       get: jest.fn(),
       set: jest.fn(),
@@ -92,6 +110,7 @@ describe('AttributeValueService', () => {
         { provide: ProductRepository, useValue: mockProductRepository },
         { provide: VariantRepository, useValue: mockVariantRepository },
         { provide: ProductCacheService, useValue: mockProductCacheService },
+        { provide: AttributeOptionRepository, useValue: mockOptionRepository },
       ],
     }).compile();
 
@@ -283,6 +302,98 @@ describe('AttributeValueService', () => {
           value: 'Velvet',
         }),
       ).rejects.toThrow(AttributeScopeMismatchException);
+    });
+  });
+
+  describe('option resolution', () => {
+    beforeEach(() => {
+      mockProductRepository.findById.mockResolvedValue({ id: 'prod-uuid-1', slug: 'p' });
+      mockAttributeValueRepository.findByProductAndDefinition.mockResolvedValue(null);
+      mockAttributeValueRepository.create.mockResolvedValue(mockValueRecord);
+    });
+
+    const createdWith = () =>
+      (mockAttributeValueRepository.create as jest.Mock).mock.calls[0][0] as {
+        value: string;
+        options?: { create: { option: { connect: { id: string } } }[] };
+      };
+
+    it('resolves a value by label or slug and stores the canonical label with its option', async () => {
+      mockAttributeDefinitionRepository.findById.mockResolvedValue(mockProductDef);
+
+      await service.assignProductAttribute('prod-uuid-1', {
+        definitionId: 'def-prod-1',
+        value: 'teak wood',
+      });
+
+      expect(createdWith().value).toBe('Teak Wood');
+      expect(createdWith().options?.create).toEqual([{ option: { connect: { id: 'opt-teak' } } }]);
+    });
+
+    it('rejects a value outside the vocabulary', async () => {
+      mockAttributeDefinitionRepository.findById.mockResolvedValue(mockProductDef);
+
+      const error = await service
+        .assignProductAttribute('prod-uuid-1', { definitionId: 'def-prod-1', value: 'Granite' })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(AttributeOptionNotFoundException);
+      expect(mockAttributeValueRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('links every option of a LIST value once', async () => {
+      mockAttributeDefinitionRepository.findById.mockResolvedValue({
+        ...mockProductDef,
+        type: AttributeType.LIST,
+      });
+
+      await service.assignProductAttribute('prod-uuid-1', {
+        definitionId: 'def-prod-1',
+        value: ['Velvet', 'leather', 'velvet'],
+      });
+
+      expect(createdWith().value).toBe(JSON.stringify(['Velvet', 'Leather']));
+      expect(createdWith().options?.create).toHaveLength(2);
+    });
+
+    it('links the "yes" option for a true BOOLEAN and nothing for false', async () => {
+      const boolDef = {
+        ...mockProductDef,
+        id: 'def-bool',
+        type: AttributeType.BOOLEAN,
+      };
+      mockAttributeDefinitionRepository.findById.mockResolvedValue(boolDef);
+
+      await service.assignProductAttribute('prod-uuid-1', {
+        definitionId: 'def-bool',
+        value: true,
+      });
+      expect(createdWith().value).toBe('true');
+      expect(createdWith().options?.create).toEqual([{ option: { connect: { id: 'opt-yes' } } }]);
+
+      (mockAttributeValueRepository.create as jest.Mock).mockClear();
+      await service.assignProductAttribute('prod-uuid-1', {
+        definitionId: 'def-bool',
+        value: 'false',
+      });
+      expect(createdWith().value).toBe('false');
+      expect(createdWith().options).toBeUndefined();
+    });
+
+    it('keeps product-specific attributes as free text', async () => {
+      mockAttributeDefinitionRepository.findById.mockResolvedValue({
+        ...mockProductDef,
+        productId: 'prod-uuid-1',
+        isFilterable: false,
+      });
+
+      await service.assignProductAttribute('prod-uuid-1', {
+        definitionId: 'def-prod-1',
+        value: 'Anything at all',
+      });
+
+      expect(createdWith().value).toBe('Anything at all');
+      expect(mockOptionRepository.findByDefinition).not.toHaveBeenCalled();
     });
   });
 

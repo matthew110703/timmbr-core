@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { AttributeScope, AttributeType } from '@prisma/client';
+import { AttributeScope, AttributeType, FilterDisplay } from '@prisma/client';
 import { AttributeDefinitionService } from './attribute-definition.service';
 import { AttributeDefinitionRepository } from '../repositories/attribute-definition.repository';
 import { ProductRepository } from '../../product.repository';
@@ -8,6 +8,9 @@ import {
   AttributeDefinitionImmutableException,
   AttributeDefinitionInUseException,
   AttributeDefinitionNotFoundException,
+  AttributeFilterRuleException,
+  AttributeKeyAlreadyExistsException,
+  AttributeKeyImmutableException,
 } from '@/common/exceptions/attribute.exception';
 import { ProductNotFoundException } from '@/common/exceptions/product.exception';
 
@@ -23,6 +26,9 @@ describe('AttributeDefinitionService', () => {
     scope: AttributeScope.VARIANT,
     unit: null,
     isFilterable: true,
+    key: 'color',
+    displayType: FilterDisplay.SWATCH,
+    filterOrder: 0,
     productId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -38,6 +44,8 @@ describe('AttributeDefinitionService', () => {
       update: jest.fn(),
       delete: jest.fn(),
       countUsage: jest.fn(),
+      findGlobalByKey: jest.fn().mockResolvedValue(null),
+      countFilterableVariantScoped: jest.fn().mockResolvedValue(0),
     };
 
     mockProductRepository = {
@@ -65,6 +73,7 @@ describe('AttributeDefinitionService', () => {
         type: AttributeType.STRING,
         scope: AttributeScope.VARIANT,
         isFilterable: true,
+        key: 'color',
       });
 
       expect(mockAttributeDefinitionRepository.findByName).toHaveBeenCalledWith('Color', null);
@@ -214,6 +223,68 @@ describe('AttributeDefinitionService', () => {
       await expect(service.delete('def-uuid-none')).rejects.toThrow(
         AttributeDefinitionNotFoundException,
       );
+    });
+  });
+  describe('filter rules', () => {
+    const globalDef = {
+      name: 'Material',
+      type: AttributeType.STRING,
+      scope: AttributeScope.PRODUCT,
+      isFilterable: true,
+      key: 'material',
+    };
+
+    beforeEach(() => {
+      mockAttributeDefinitionRepository.findByName.mockResolvedValue(null);
+      mockAttributeDefinitionRepository.create.mockResolvedValue(mockDef);
+    });
+
+    const ruleError = async (promise: Promise<unknown>) => {
+      const error = await promise.catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(AttributeFilterRuleException);
+    };
+
+    it('requires a key for a filterable attribute', async () => {
+      await ruleError(service.create({ ...globalDef, key: undefined }));
+    });
+
+    it('rejects reserved listing keys', async () => {
+      await ruleError(service.create({ ...globalDef, key: 'sort' }));
+      await ruleError(service.create({ ...globalDef, key: 'brand' }));
+    });
+
+    it('rejects types that cannot map to options', async () => {
+      await ruleError(service.create({ ...globalDef, type: AttributeType.DECIMAL }));
+    });
+
+    it('never lets a product-specific attribute filter', async () => {
+      mockProductRepository.findById.mockResolvedValue({ id: 'prod-1' });
+      await ruleError(service.create({ ...globalDef, key: undefined, productId: 'prod-1' }));
+    });
+
+    it('rejects a key another attribute already uses', async () => {
+      mockAttributeDefinitionRepository.findGlobalByKey.mockResolvedValue({ id: 'other' });
+      const error = await service.create(globalDef).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(AttributeKeyAlreadyExistsException);
+    });
+
+    it('allows only one variant-level filter', async () => {
+      mockAttributeDefinitionRepository.countFilterableVariantScoped.mockResolvedValue(1);
+      await ruleError(service.create({ ...globalDef, scope: AttributeScope.VARIANT }));
+    });
+
+    it('gives a global BOOLEAN attribute its "yes" option', async () => {
+      await service.create({ ...globalDef, key: 'clearance', type: AttributeType.BOOLEAN });
+      expect(mockAttributeDefinitionRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ options: { create: { slug: 'yes', label: 'Yes' } } }),
+      );
+    });
+
+    it('keeps a key immutable once set', async () => {
+      mockAttributeDefinitionRepository.findById.mockResolvedValue(mockDef);
+      mockAttributeDefinitionRepository.countUsage.mockResolvedValue(0);
+      const error = await service.update('def-uuid-1', { key: 'colour' }).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(AttributeKeyImmutableException);
     });
   });
 });

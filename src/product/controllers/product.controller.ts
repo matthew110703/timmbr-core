@@ -17,8 +17,14 @@ export class ProductController {
     return this.service.getAllProducts(query, true);
   }
 
+  /**
+   * @deprecated Global and not scoped to a listing. Use `GET /catalog/listing/facets`, which
+   * returns product counts for the current category and filters.
+   */
   @Get(PRODUCT_ROUTES.FILTERS)
   @Public()
+  @Header('Deprecation', 'true')
+  @Header('Link', '</api/v1/catalog/listing/facets>; rel="successor-version"')
   @Header('Cache-Control', 'public, max-age=120, s-maxage=600, stale-while-revalidate=1200')
   @ResponseMessage('Product filter options fetched successfully.')
   getFilters() {

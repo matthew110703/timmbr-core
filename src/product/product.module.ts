@@ -12,6 +12,9 @@ import { ProductImageService } from './image/product-image.service';
 import { ProductImageAdminController } from './image/controllers/product-image.admin.controller';
 import { AttributeDefinitionRepository } from './attribute/repositories/attribute-definition.repository';
 import { AttributeValueRepository } from './attribute/repositories/attribute-value.repository';
+import { AttributeOptionRepository } from './attribute/repositories/attribute-option.repository';
+import { AttributeOptionService } from './attribute/services/attribute-option.service';
+import { AttributeOptionAdminController } from './attribute/controllers/attribute-option.admin.controller';
 import { AttributeDefinitionService } from './attribute/services/attribute-definition.service';
 import { AttributeValueService } from './attribute/services/attribute-value.service';
 import { AttributeDefinitionAdminController } from './attribute/controllers/attribute-definition.admin.controller';
@@ -31,6 +34,7 @@ import { MediaModule } from '@/media/media.module';
     VariantAdminController,
     ProductImageAdminController,
     AttributeDefinitionAdminController,
+    AttributeOptionAdminController,
     ProductAttributeAdminController,
     VariantAttributeAdminController,
   ],
@@ -44,6 +48,8 @@ import { MediaModule } from '@/media/media.module';
     ProductImageService,
     AttributeDefinitionRepository,
     AttributeValueRepository,
+    AttributeOptionRepository,
+    AttributeOptionService,
     AttributeDefinitionService,
     AttributeValueService,
   ],

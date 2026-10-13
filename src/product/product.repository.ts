@@ -136,7 +136,8 @@ export class ProductRepository {
           },
           variants: {
             where: { status: VariantStatus.ACTIVE },
-            orderBy: [{ isDefault: 'desc' }, { price: 'asc' }, { createdAt: 'asc' }],
+            // Same rule as the listing read model: the default variant, else the oldest active one.
+            orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }, { id: 'asc' }],
             select: {
               id: true,
               productId: true,

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
-import { Prisma } from '@prisma/client';
+import { AttributeScope, Prisma } from '@prisma/client';
 import { AttributeDefinitionWithCount } from '../mappers/attribute.mapper';
 
 @Injectable()
@@ -87,6 +87,21 @@ export class AttributeDefinitionRepository {
   async delete(id: string): Promise<void> {
     await this.prisma.attributeDefinition.delete({
       where: { id },
+    });
+  }
+
+  async findGlobalByKey(key: string): Promise<AttributeDefinitionWithCount | null> {
+    return this.prisma.attributeDefinition.findFirst({ where: { key, productId: null } });
+  }
+
+  async countFilterableVariantScoped(excludeId?: string): Promise<number> {
+    return this.prisma.attributeDefinition.count({
+      where: {
+        isFilterable: true,
+        scope: AttributeScope.VARIANT,
+        productId: null,
+        ...(excludeId && { id: { not: excludeId } }),
+      },
     });
   }
 
