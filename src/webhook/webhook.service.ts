@@ -1,3 +1,4 @@
+import { byVariantId } from '@/common/utils/helpers';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
 import { RazorpayService } from '@/payment/razorpay.service';
@@ -79,7 +80,7 @@ export class WebhookService {
                 return;
               }
 
-              for (const item of order.items) {
+              for (const item of byVariantId(order.items)) {
                 if (item.variantId) {
                   const inv = await tx.inventory.findUnique({
                     where: { variantId: item.variantId },

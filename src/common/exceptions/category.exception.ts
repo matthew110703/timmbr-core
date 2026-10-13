@@ -37,3 +37,12 @@ export class CategoryHasChildrenException extends UnprocessableEntityException {
     });
   }
 }
+
+export class CategoryCycleException extends BadRequestException {
+  constructor() {
+    super({
+      message: 'A category cannot be moved under one of its own sub-categories.',
+      code: 'CATEGORY_CYCLE',
+    });
+  }
+}

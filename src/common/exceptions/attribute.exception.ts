@@ -94,3 +94,62 @@ export class VariantDoesNotBelongToProductException extends UnprocessableEntityE
     });
   }
 }
+
+export class AttributeFilterRuleException extends UnprocessableEntityException {
+  constructor(reason: string) {
+    super({ message: reason, code: 'ATTRIBUTE_FILTER_RULE_VIOLATION' });
+  }
+}
+
+export class AttributeKeyAlreadyExistsException extends ConflictException {
+  constructor(key: string) {
+    super({
+      message: `A filter key "${key}" already exists on another attribute.`,
+      code: 'ATTRIBUTE_KEY_ALREADY_EXISTS',
+    });
+  }
+}
+
+export class AttributeKeyImmutableException extends ConflictException {
+  constructor() {
+    super({
+      message: 'An attribute filter key cannot be changed once set (storefront URLs use it).',
+      code: 'ATTRIBUTE_KEY_IMMUTABLE',
+    });
+  }
+}
+
+export class AttributeOptionNotFoundException extends BadRequestException {
+  constructor(value?: string) {
+    super({
+      message: value
+        ? `"${value}" is not an allowed option for this attribute.`
+        : 'Attribute option not found.',
+      code: 'ATTRIBUTE_OPTION_NOT_FOUND',
+    });
+  }
+}
+
+export class AttributeOptionAlreadyExistsException extends ConflictException {
+  constructor(slug: string) {
+    super({
+      message: `An option with slug "${slug}" already exists for this attribute.`,
+      code: 'ATTRIBUTE_OPTION_ALREADY_EXISTS',
+    });
+  }
+}
+
+export class AttributeOptionInUseException extends ConflictException {
+  constructor(count: number) {
+    super({
+      message: `Cannot delete this option: ${count} attribute value(s) use it.`,
+      code: 'ATTRIBUTE_OPTION_IN_USE',
+    });
+  }
+}
+
+export class AttributeOptionsNotSupportedException extends UnprocessableEntityException {
+  constructor(reason: string) {
+    super({ message: reason, code: 'ATTRIBUTE_OPTIONS_NOT_SUPPORTED' });
+  }
+}

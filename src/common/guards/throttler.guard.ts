@@ -5,6 +5,7 @@ import type { FastifyRequest } from 'fastify';
 import { env } from '@/config/env';
 import { RateLimitedException } from '@/common/exceptions/auth.exception';
 import { clientIp } from '@/common/trusted-client';
+import { TRUSTED_UNTHROTTLED_KEY } from '@/common/decorators/trusted-unthrottled.decorator';
 
 /** Stateless verifier: only checks signature + expiry of access tokens. */
 const accessTokens = new JwtService({ secret: env.JWT_ACCESS_SECRET });
@@ -25,6 +26,21 @@ export class AppThrottlerGuard extends ThrottlerGuard {
     const request = req as FastifyRequest;
     const userId = verifiedUserId(request);
     return Promise.resolve(userId ? `user:${userId}` : clientIp(request));
+  }
+
+  /** Trusted storefront servers skip the limit on routes marked `@TrustedUnthrottled()`. */
+  protected async shouldSkip(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest<FastifyRequest>();
+    if (
+      request.trustedClient &&
+      this.reflector.getAllAndOverride<boolean>(TRUSTED_UNTHROTTLED_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ])
+    ) {
+      return true;
+    }
+    return super.shouldSkip(context);
   }
 
   protected throwThrottlingException(

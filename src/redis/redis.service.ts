@@ -42,6 +42,21 @@ export class RedisService {
     return this.client.get(key);
   }
 
+  /** JSON value of a key, or null when missing or not valid JSON. */
+  async getJson<T>(key: string): Promise<T | null> {
+    const raw = await this.client.get(key);
+    if (raw === null) return null;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  setJson(key: string, ttlSeconds: number, value: unknown) {
+    return this.client.setex(key, ttlSeconds, JSON.stringify(value));
+  }
+
   getAndDelete(key: string) {
     return this.client.getdel(key);
   }

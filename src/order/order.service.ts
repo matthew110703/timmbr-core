@@ -5,6 +5,7 @@ import { OrderPricingService } from './order-pricing.service';
 import { RazorpayService } from '@/payment/razorpay.service';
 import { PaymentRepository } from '@/payment/payment.repository';
 import { env } from '@/config/env';
+import { byVariantId, compareIds } from '@/common/utils/helpers';
 import { CartRepository } from '@/cart/cart.repository';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CheckoutQuoteDto } from './dto/checkout-quote.dto';
@@ -80,7 +81,7 @@ export class OrderService {
     // 2. Transactionally reserve inventory, create Order and OrderItems
     const order = await this.prisma.$transaction(async (tx) => {
       // a. Reserve stock in inventory
-      for (const item of calculatedItems) {
+      for (const item of byVariantId(calculatedItems)) {
         await tx.inventory.update({
           where: { variantId: item.variantId },
           data: {
@@ -162,7 +163,7 @@ export class OrderService {
       );
 
       await this.prisma.$transaction(async (tx) => {
-        for (const item of calculatedItems) {
+        for (const item of byVariantId(calculatedItems)) {
           await tx.inventory.update({
             where: { variantId: item.variantId },
             data: {
@@ -308,7 +309,7 @@ export class OrderService {
       if (newStatus === OrderStatus.CANCELLED) {
         if (order.status === OrderStatus.PENDING) {
           // PENDING → CANCELLED: release reserved stock (stock wasn't deducted yet)
-          for (const item of order.items) {
+          for (const item of byVariantId(order.items)) {
             if (item.variantId) {
               await tx.inventory.updateMany({
                 where: { variantId: item.variantId },
@@ -326,7 +327,7 @@ export class OrderService {
         ) {
           // CONFIRMED/PROCESSING → CANCELLED: restore actual stock
           // (the webhook already deducted quantity and released reservedQuantity)
-          for (const item of order.items) {
+          for (const item of byVariantId(order.items)) {
             if (item.variantId) {
               const inv = await tx.inventory.findUnique({
                 where: { variantId: item.variantId },
@@ -388,7 +389,9 @@ export class OrderService {
     // Execute atomic transaction to release reserved stock and cancel orders/payments
     await this.prisma.$transaction(async (tx) => {
       // 1. Release reserved quantities for affected variants (floor at 0)
-      for (const [variantId, qtyToRelease] of variantDecrements.entries()) {
+      for (const [variantId, qtyToRelease] of [...variantDecrements.entries()].sort(([a], [b]) =>
+        compareIds(a, b),
+      )) {
         const inv = await tx.inventory.findUnique({ where: { variantId } });
         if (inv) {
           await tx.inventory.update({

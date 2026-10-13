@@ -1,3 +1,4 @@
+import { byVariantId } from '@/common/utils/helpers';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
 import { RazorpayService } from './razorpay.service';
@@ -72,7 +73,7 @@ export class PaymentService {
       });
 
       // c. Deduct reserved inventory & log SALE audit transaction
-      for (const item of updatedOrder.items) {
+      for (const item of byVariantId(updatedOrder.items)) {
         if (item.variantId) {
           const inv = await tx.inventory.findUnique({
             where: { variantId: item.variantId },
