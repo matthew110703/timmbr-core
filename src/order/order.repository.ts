@@ -38,6 +38,27 @@ export class OrderRepository {
     });
   }
 
+  /** The user's unexpired PENDING orders for an address, newest first (checkout re-entry). */
+  async findLivePendingOrders(
+    userId: string,
+    shippingAddressId: string,
+  ): Promise<OrderWithRelations[]> {
+    return this.prisma.order.findMany({
+      where: {
+        userId,
+        shippingAddressId,
+        status: OrderStatus.PENDING,
+        expiresAt: { gt: new Date() },
+      },
+      include: {
+        items: true,
+        payments: { orderBy: { createdAt: 'desc' } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+  }
+
   async findUserOrders(
     userId: string,
     where: Prisma.OrderWhereInput,

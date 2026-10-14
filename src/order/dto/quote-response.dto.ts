@@ -19,4 +19,6 @@ export class QuoteResponseDto {
   tax!: number;
   grandTotal!: number;
   currency!: string;
+  /** Largest total that can be paid online in one order (rupees). */
+  paymentLimit!: number;
 }

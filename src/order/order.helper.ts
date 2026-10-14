@@ -43,6 +43,12 @@ export function calculateOrderExpiration(ttlMinutes: number): Date {
 }
 
 /**
+ * Largest amount Razorpay accepts for one order (rupees). Above it order creation is refused
+ * ("Amount exceeds maximum amount allowed"), so checkout refuses earlier, before stock is held.
+ */
+export const MAX_ONLINE_PAYMENT_AMOUNT = 500_000;
+
+/**
  * Converts a currency amount in rupees to paise (rounded to the nearest integer).
  */
 export function convertRupeesToPaise(amount: number): number {
@@ -84,4 +90,30 @@ export function aggregateVariantStockDecrements(
   }
 
   return variantDecrements;
+}
+
+/**
+ * True when the order's lines are exactly the requested variant quantities
+ * (order and duplicate lines don't matter).
+ */
+export function hasSameVariantQuantities(
+  orderItems: OrderItemWithVariantQuantity[],
+  requested: { variantId: string; quantity: number }[],
+): boolean {
+  const toMap = (lines: OrderItemWithVariantQuantity[]) => {
+    const map = new Map<string, number>();
+    for (const line of lines) {
+      if (!line.variantId) return null;
+      map.set(line.variantId, (map.get(line.variantId) ?? 0) + line.quantity);
+    }
+    return map;
+  };
+
+  const have = toMap(orderItems);
+  const want = toMap(requested);
+  if (!have || !want || have.size !== want.size) return false;
+  for (const [variantId, quantity] of want) {
+    if (have.get(variantId) !== quantity) return false;
+  }
+  return true;
 }

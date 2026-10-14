@@ -2,6 +2,7 @@ import {
   BadRequestException,
   InternalServerErrorException,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 
 export class PaymentNotFoundException extends NotFoundException {
@@ -31,5 +32,15 @@ export class RazorpayOrderCreationFailedException extends InternalServerErrorExc
 export class PaymentAlreadyCompletedException extends BadRequestException {
   constructor(message = 'Payment has already been completed.') {
     super({ message, code: 'PAYMENT_ALREADY_COMPLETED' });
+  }
+}
+
+export class PaymentAmountTooHighException extends UnprocessableEntityException {
+  constructor(limit: number) {
+    super({
+      message: `Orders above ₹${limit.toLocaleString('en-IN')} can't be paid online. Please split your order.`,
+      code: 'PAYMENT_AMOUNT_TOO_HIGH',
+      details: { limit },
+    });
   }
 }

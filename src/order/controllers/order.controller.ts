@@ -16,7 +16,11 @@ import { ORDER_ROUTES } from '../order.routes';
 import { OrderService } from '../order.service';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { GetOrdersQueryDto } from '../dto/get-orders-query.dto';
-import { CreateOrderResponseDto, OrderResponseDto } from '../dto/order-response.dto';
+import {
+  CreateOrderResponseDto,
+  OrderResponseDto,
+  PaymentSessionResponseDto,
+} from '../dto/order-response.dto';
 import { PaymentResponseDto } from '@/payment/dto/payment-response.dto';
 import { PaginatedResult } from '@/common/types/api-response.types';
 
@@ -53,6 +57,17 @@ export class OrderController {
   ): Promise<OrderResponseDto> {
     const user = req.user as unknown as JwtPayload;
     return this.orderService.getUserOrderById(user.sub, orderId);
+  }
+
+  @Post(ORDER_ROUTES.PAYMENT_SESSION)
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Payment session ready.')
+  async getPaymentSession(
+    @Req() req: FastifyRequest,
+    @Param('orderId') orderId: string,
+  ): Promise<PaymentSessionResponseDto> {
+    const user = req.user as unknown as JwtPayload;
+    return this.orderService.getPaymentSession(user.sub, orderId);
   }
 
   @Get(ORDER_ROUTES.PAYMENT)

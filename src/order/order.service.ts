@@ -14,17 +14,22 @@ import {
   AdminOrderListItemDto,
   CreateOrderResponseDto,
   OrderResponseDto,
+  PaymentInitDto,
+  PaymentSessionResponseDto,
 } from './dto/order-response.dto';
 import { OrderCleanupResponseDto } from './dto/order-cleanup-response.dto';
 import { GetOrdersQueryDto } from './dto/get-orders-query.dto';
 import { MediaService } from '@/media/media.service';
-import { OrderMapper } from './order.mapper';
+import { OrderMapper, OrderWithRelations } from './order.mapper';
 import { PaymentMapper } from '@/payment/payment.mapper';
 import { PaymentResponseDto } from '@/payment/dto/payment-response.dto';
 import {
   OrderAccessForbiddenException,
   OrderNotFoundException,
+  OrderNotPayableException,
 } from '@/common/exceptions/order.exception';
+import { PaymentAmountTooHighException } from '@/common/exceptions/payment.exception';
+import { KeyedMutex } from '@/common/utils/keyed-mutex';
 import { PaginatedResult } from '@/common/types/api-response.types';
 import {
   InventoryTransactionType,
@@ -37,6 +42,8 @@ import {
   aggregateVariantStockDecrements,
   calculateOrderExpiration,
   convertRupeesToPaise,
+  hasSameVariantQuantities,
+  MAX_ONLINE_PAYMENT_AMOUNT,
   validateOrderTransition,
 } from './order.helper';
 
@@ -66,7 +73,30 @@ export class OrderService {
     return pricing;
   }
 
-  async createOrder(userId: string, dto: CreateOrderDto): Promise<CreateOrderResponseDto> {
+  /**
+   * Orders and payment sessions are created one at a time per user (per order), so a double click
+   * or a second tab cannot both miss the "open order" lookup and hold the stock twice. This
+   * serialises within one process; several instances would need a database lock instead.
+   */
+  private readonly mutex = new KeyedMutex();
+
+  createOrder(userId: string, dto: CreateOrderDto): Promise<CreateOrderResponseDto> {
+    return this.mutex.run(`user:${userId}`, () => this.createOrderUnlocked(userId, dto));
+  }
+
+  private async createOrderUnlocked(
+    userId: string,
+    dto: CreateOrderDto,
+  ): Promise<CreateOrderResponseDto> {
+    // 0. Checkout re-entry (double click, back button, retry): an unexpired PENDING order for
+    //    the same lines and address already holds its stock, so hand that one back instead of
+    //    reserving the same stock again.
+    const reusable = await this.findReusableOrder(userId, dto);
+    if (reusable) {
+      const payment = await this.ensurePayment(reusable);
+      return { order: OrderMapper.toResponse(reusable), payment };
+    }
+
     // 1. Validate items, address, and calculate pricing
     const { addressSnapshot, calculatedItems, pricing } =
       await this.orderPricingService.calculateQuoteAndValidate(
@@ -74,6 +104,11 @@ export class OrderService {
         dto.items,
         dto.shippingAddressId,
       );
+
+    // Razorpay refuses larger orders; say so now instead of after the stock is held.
+    if (pricing.grandTotal > MAX_ONLINE_PAYMENT_AMOUNT) {
+      throw new PaymentAmountTooHighException(MAX_ONLINE_PAYMENT_AMOUNT);
+    }
 
     const activeCart = await this.cartRepository.findActiveCartByUserId(userId);
     const expiresAt = calculateOrderExpiration(env.ORDER_EXPIRATION_TTL_MINUTES ?? 15);
@@ -185,15 +220,101 @@ export class OrderService {
 
     return {
       order: OrderMapper.toResponse(order),
-      payment: {
-        id: payment.id,
-        provider: payment.provider,
-        status: payment.status,
-        amount: Number(payment.amount),
-        currency: payment.currency,
-        razorpayOrderId: razorpayOrder.id,
-        razorpayKeyId: this.razorpayService.getKeyId(),
-      },
+      payment: this.toPaymentInit(payment, razorpayOrder.id),
+    };
+  }
+
+  /**
+   * What the client needs to (re)open Razorpay for a PENDING order: used to resume after the
+   * modal was dismissed or a payment failed. Starts a fresh Razorpay order when the last
+   * attempt can't be continued.
+   */
+  getPaymentSession(userId: string, orderId: string): Promise<PaymentSessionResponseDto> {
+    return this.mutex.run(`user:${userId}`, () => this.getPaymentSessionUnlocked(userId, orderId));
+  }
+
+  private async getPaymentSessionUnlocked(
+    userId: string,
+    orderId: string,
+  ): Promise<PaymentSessionResponseDto> {
+    const order = await this.orderRepository.findById(orderId);
+    if (!order) {
+      throw new OrderNotFoundException();
+    }
+
+    if (order.userId !== userId) {
+      throw new OrderAccessForbiddenException();
+    }
+
+    const expired = !!order.expiresAt && order.expiresAt.getTime() <= Date.now();
+    if (order.status !== OrderStatus.PENDING || expired) {
+      throw new OrderNotPayableException();
+    }
+
+    return { orderId: order.id, payment: await this.ensurePayment(order) };
+  }
+
+  private async findReusableOrder(
+    userId: string,
+    dto: CreateOrderDto,
+  ): Promise<OrderWithRelations | null> {
+    const candidates = await this.orderRepository.findLivePendingOrders(
+      userId,
+      dto.shippingAddressId,
+    );
+    return candidates.find((order) => hasSameVariantQuantities(order.items, dto.items)) ?? null;
+  }
+
+  /** The order's open Razorpay attempt, or a new one when there is none to continue. */
+  private async ensurePayment(order: OrderWithRelations): Promise<PaymentInitDto> {
+    // A Razorpay order accepts further attempts until it is paid, so a PENDING or FAILED attempt
+    // is continued rather than replaced. A second Razorpay order for the same order could end up
+    // paid twice.
+    const latest = order.payments?.[0];
+    if (
+      latest?.providerOrderId &&
+      (latest.status === PaymentStatus.PENDING || latest.status === PaymentStatus.FAILED)
+    ) {
+      return this.toPaymentInit(latest, latest.providerOrderId);
+    }
+
+    const razorpayOrder = await this.razorpayService.createOrder({
+      amount: convertRupeesToPaise(Number(order.grandTotal)),
+      currency: order.currency,
+      receipt: order.id,
+      notes: { orderId: order.id, userId: order.userId },
+    });
+
+    const payment = await this.paymentRepository.create({
+      order: { connect: { id: order.id } },
+      provider: PaymentProvider.RAZORPAY,
+      providerOrderId: razorpayOrder.id,
+      amount: order.grandTotal,
+      currency: order.currency,
+      status: PaymentStatus.PENDING,
+    });
+
+    return this.toPaymentInit(payment, razorpayOrder.id);
+  }
+
+  private toPaymentInit(
+    payment: {
+      id: string;
+      provider: PaymentProvider;
+      status: PaymentStatus;
+      amount: unknown;
+      currency: string;
+    },
+    razorpayOrderId: string,
+  ): PaymentInitDto {
+    return {
+      id: payment.id,
+      provider: payment.provider,
+      status: payment.status,
+      amount: Number(payment.amount),
+      currency: payment.currency,
+      razorpayOrderId,
+      razorpayKeyId: this.razorpayService.getKeyId(),
     };
   }
 

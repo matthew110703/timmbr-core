@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
   UnprocessableEntityException,
@@ -47,5 +48,11 @@ export class OrderInsufficientStockException extends UnprocessableEntityExceptio
 export class OrderAccessForbiddenException extends ForbiddenException {
   constructor(message = 'You do not have permission to access this order.') {
     super({ message, code: 'ORDER_ACCESS_FORBIDDEN' });
+  }
+}
+
+export class OrderNotPayableException extends ConflictException {
+  constructor(message = 'This order can no longer be paid for. Please place a new order.') {
+    super({ message, code: 'ORDER_NOT_PAYABLE' });
   }
 }

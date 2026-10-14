@@ -7,6 +7,7 @@ import {
   isOrderTransitionAllowed,
   roundToTwoDecimals,
   validateOrderTransition,
+  hasSameVariantQuantities,
 } from './order.helper';
 import { OrderIllegalStateTransitionException } from '@/common/exceptions/order.exception';
 
@@ -99,5 +100,50 @@ describe('OrderHelper', () => {
       const result = aggregateVariantStockDecrements([]);
       expect(result.size).toBe(0);
     });
+  });
+});
+
+describe('hasSameVariantQuantities', () => {
+  const lines = [
+    { variantId: 'a', quantity: 2 },
+    { variantId: 'b', quantity: 1 },
+  ];
+
+  it('matches regardless of order', () => {
+    expect(
+      hasSameVariantQuantities(lines, [
+        { variantId: 'b', quantity: 1 },
+        { variantId: 'a', quantity: 2 },
+      ]),
+    ).toBe(true);
+  });
+
+  it('adds up duplicate lines', () => {
+    expect(
+      hasSameVariantQuantities(lines, [
+        { variantId: 'a', quantity: 1 },
+        { variantId: 'a', quantity: 1 },
+        { variantId: 'b', quantity: 1 },
+      ]),
+    ).toBe(true);
+  });
+
+  it('rejects a different quantity or variant set', () => {
+    expect(hasSameVariantQuantities(lines, [{ variantId: 'a', quantity: 2 }])).toBe(false);
+    expect(
+      hasSameVariantQuantities(lines, [
+        { variantId: 'a', quantity: 3 },
+        { variantId: 'b', quantity: 1 },
+      ]),
+    ).toBe(false);
+  });
+
+  it('never matches an order line whose variant was deleted', () => {
+    expect(
+      hasSameVariantQuantities(
+        [{ variantId: null, quantity: 1 }],
+        [{ variantId: 'a', quantity: 1 }],
+      ),
+    ).toBe(false);
   });
 });

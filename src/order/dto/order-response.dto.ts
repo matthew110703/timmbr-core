@@ -41,17 +41,25 @@ export class OrderResponseDto {
   payments?: PaymentResponseDto[];
 }
 
+/** What a client needs to open the Razorpay checkout for an order. Amount is in rupees. */
+export class PaymentInitDto {
+  id!: string;
+  provider!: PaymentProvider;
+  status!: PaymentStatus;
+  amount!: number;
+  currency!: string;
+  razorpayOrderId?: string;
+  razorpayKeyId?: string;
+}
+
 export class CreateOrderResponseDto {
   order!: OrderResponseDto;
-  payment!: {
-    id: string;
-    provider: PaymentProvider;
-    status: PaymentStatus;
-    amount: number;
-    currency: string;
-    razorpayOrderId?: string;
-    razorpayKeyId?: string;
-  };
+  payment!: PaymentInitDto;
+}
+
+export class PaymentSessionResponseDto {
+  orderId!: string;
+  payment!: PaymentInitDto;
 }
 
 export class AdminOrderCustomerDto {

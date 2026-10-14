@@ -8,7 +8,7 @@ import {
 } from '@/common/exceptions/order.exception';
 import { AddressNotFoundException } from '@/common/exceptions/address.exception';
 import { ProductStatus, VariantStatus } from '@prisma/client';
-import { roundToTwoDecimals } from './order.helper';
+import { MAX_ONLINE_PAYMENT_AMOUNT, roundToTwoDecimals } from './order.helper';
 
 export interface ValidatedCheckoutData {
   addressSnapshot: {
@@ -152,6 +152,7 @@ export class OrderPricingService {
       tax,
       grandTotal,
       currency,
+      paymentLimit: MAX_ONLINE_PAYMENT_AMOUNT,
     };
 
     return {

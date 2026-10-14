@@ -3,6 +3,7 @@ export const ORDER_ROUTES = {
   CHECKOUT: 'checkout',
   QUOTE: 'quote',
   PAYMENT: ':orderId/payment',
+  PAYMENT_SESSION: ':orderId/payment-session',
   ADMIN_ORDERS: 'admin/orders',
   STATUS: ':orderId/status',
 } as const;

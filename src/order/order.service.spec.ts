@@ -10,7 +10,9 @@ import {
   OrderAccessForbiddenException,
   OrderIllegalStateTransitionException,
   OrderNotFoundException,
+  OrderNotPayableException,
 } from '@/common/exceptions/order.exception';
+import { PaymentAmountTooHighException } from '@/common/exceptions/payment.exception';
 import { OrderStatus, PaymentProvider, PaymentStatus } from '@prisma/client';
 import { CartRepository } from '@/cart/cart.repository';
 
@@ -95,6 +97,7 @@ describe('OrderService', () => {
       findAdminOrders: jest.fn(),
       update: jest.fn(),
       findExpiredPendingOrders: jest.fn(),
+      findLivePendingOrders: jest.fn().mockResolvedValue([]),
     };
 
     const mockPricingService = {
@@ -218,6 +221,187 @@ describe('OrderService', () => {
             cartId: 'cart-uuid-active',
           }),
         }),
+      );
+    });
+  });
+
+  describe('createOrder payment limit', () => {
+    it('refuses an order above the online limit before holding any stock', async () => {
+      orderPricingService.calculateQuoteAndValidate.mockResolvedValueOnce({
+        addressSnapshot: {},
+        calculatedItems: [],
+        pricing: { grandTotal: 592989 },
+      } as any);
+
+      await expect(
+        service.createOrder('user-uuid-1', {
+          shippingAddressId: 'addr-uuid-1',
+          items: [{ variantId: 'var-uuid-1', quantity: 30 }],
+        }),
+      ).rejects.toThrow(PaymentAmountTooHighException);
+
+      expect(mockTx.inventory.update).not.toHaveBeenCalled();
+      expect(razorpayService.createOrder).not.toHaveBeenCalled();
+    });
+
+    it('accepts an order exactly at the limit', async () => {
+      orderPricingService.calculateQuoteAndValidate.mockResolvedValueOnce({
+        addressSnapshot: { city: 'Bengaluru' },
+        calculatedItems: [],
+        pricing: {
+          subtotal: 500000,
+          discount: 0,
+          shippingFee: 0,
+          tax: 0,
+          grandTotal: 500000,
+          currency: 'INR',
+        },
+      } as any);
+
+      await expect(
+        service.createOrder('user-uuid-1', {
+          shippingAddressId: 'addr-uuid-1',
+          items: [{ variantId: 'var-uuid-1', quantity: 1 }],
+        }),
+      ).resolves.toBeDefined();
+    });
+  });
+
+  describe('createOrder re-entry', () => {
+    const request = {
+      shippingAddressId: 'addr-uuid-1',
+      items: [{ variantId: 'var-uuid-1', quantity: 1 }],
+    };
+    const pendingPayment: any = {
+      id: 'pay-uuid-1',
+      provider: PaymentProvider.RAZORPAY,
+      providerOrderId: 'order_rzp_123',
+      amount: 2000,
+      currency: 'INR',
+      status: PaymentStatus.PENDING,
+    };
+
+    it('hands back the live PENDING order for the same lines instead of reserving again', async () => {
+      orderRepository.findLivePendingOrders.mockResolvedValue([
+        { ...mockOrder, payments: [pendingPayment] },
+      ]);
+
+      const result = await service.createOrder('user-uuid-1', request);
+
+      expect(result.order.id).toBe('order-uuid-1');
+      expect(result.payment.razorpayOrderId).toBe('order_rzp_123');
+      expect(result.payment.razorpayKeyId).toBe('rzp_test_key');
+      expect(orderPricingService.calculateQuoteAndValidate).not.toHaveBeenCalled();
+      expect(mockTx.inventory.update).not.toHaveBeenCalled();
+      expect(razorpayService.createOrder).not.toHaveBeenCalled();
+    });
+
+    it('continues the same Razorpay order after a failed attempt (it accepts more attempts until paid)', async () => {
+      orderRepository.findLivePendingOrders.mockResolvedValue([
+        { ...mockOrder, payments: [{ ...pendingPayment, status: PaymentStatus.FAILED }] },
+      ]);
+
+      const result = await service.createOrder('user-uuid-1', request);
+
+      expect(razorpayService.createOrder).not.toHaveBeenCalled();
+      expect(mockTx.inventory.update).not.toHaveBeenCalled();
+      expect(result.payment.razorpayOrderId).toBe('order_rzp_123');
+    });
+
+    it('opens a new Razorpay order only when the old attempt was cancelled', async () => {
+      orderRepository.findLivePendingOrders.mockResolvedValue([
+        { ...mockOrder, payments: [{ ...pendingPayment, status: PaymentStatus.CANCELLED }] },
+      ]);
+
+      await service.createOrder('user-uuid-1', request);
+
+      expect(razorpayService.createOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: 200000, receipt: 'order-uuid-1' }),
+      );
+      expect(mockTx.inventory.update).not.toHaveBeenCalled();
+    });
+
+    it('serialises simultaneous requests from one user: the second finds the first order', async () => {
+      let stored: any[] = [];
+      orderRepository.findLivePendingOrders.mockImplementation(() => Promise.resolve(stored));
+      mockTx.order.create.mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        const order = { ...mockOrder, payments: [] };
+        stored = [{ ...order, payments: [pendingPayment] }];
+        return order;
+      });
+
+      const [first, second] = await Promise.all([
+        service.createOrder('user-uuid-1', request),
+        service.createOrder('user-uuid-1', request),
+      ]);
+
+      expect(mockTx.order.create).toHaveBeenCalledTimes(1);
+      expect(second.order.id).toBe(first.order.id);
+    });
+
+    it('creates a new order when the pending one has different lines', async () => {
+      orderRepository.findLivePendingOrders.mockResolvedValue([
+        { ...mockOrder, items: [{ ...mockOrder.items[0], quantity: 3 }], payments: [] },
+      ]);
+
+      await service.createOrder('user-uuid-1', request);
+
+      expect(orderPricingService.calculateQuoteAndValidate).toHaveBeenCalled();
+      expect(mockTx.order.create).toHaveBeenCalled();
+    });
+  });
+
+  describe('getPaymentSession', () => {
+    const pending: any = {
+      ...mockOrder,
+      payments: [
+        {
+          id: 'pay-uuid-1',
+          provider: PaymentProvider.RAZORPAY,
+          providerOrderId: 'order_rzp_123',
+          amount: 2000,
+          currency: 'INR',
+          status: PaymentStatus.PENDING,
+        },
+      ],
+    };
+
+    it('returns the open attempt for the owner', async () => {
+      orderRepository.findById.mockResolvedValue(pending);
+
+      const result = await service.getPaymentSession('user-uuid-1', 'order-uuid-1');
+
+      expect(result.orderId).toBe('order-uuid-1');
+      expect(result.payment).toMatchObject({
+        razorpayOrderId: 'order_rzp_123',
+        razorpayKeyId: 'rzp_test_key',
+        amount: 2000,
+      });
+      expect(razorpayService.createOrder).not.toHaveBeenCalled();
+    });
+
+    it('rejects another user', async () => {
+      orderRepository.findById.mockResolvedValue(pending);
+      await expect(service.getPaymentSession('someone-else', 'order-uuid-1')).rejects.toThrow(
+        OrderAccessForbiddenException,
+      );
+    });
+
+    it('rejects an unknown order', async () => {
+      orderRepository.findById.mockResolvedValue(null);
+      await expect(service.getPaymentSession('user-uuid-1', 'nope')).rejects.toThrow(
+        OrderNotFoundException,
+      );
+    });
+
+    it.each([
+      ['not PENDING', { status: OrderStatus.CONFIRMED }],
+      ['expired', { expiresAt: new Date(Date.now() - 1000) }],
+    ])('rejects an order that is %s', async (_label, patch) => {
+      orderRepository.findById.mockResolvedValue({ ...pending, ...patch });
+      await expect(service.getPaymentSession('user-uuid-1', 'order-uuid-1')).rejects.toThrow(
+        OrderNotPayableException,
       );
     });
   });

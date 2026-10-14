@@ -28,6 +28,9 @@ describe('OrderController', () => {
 
   beforeEach(async () => {
     const mockOrderService = {
+      getPaymentSession: jest
+        .fn()
+        .mockResolvedValue({ orderId: 'order-uuid-1', payment: { id: 'pay-uuid-1' } }),
       createOrder: jest.fn().mockResolvedValue({
         order: mockOrderResponse,
         payment: {
@@ -103,5 +106,12 @@ describe('OrderController', () => {
     const result = await controller.getOrderPayment(req, 'order-uuid-1');
     expect(service.getUserOrderPayment).toHaveBeenCalledWith('user-uuid-1', 'order-uuid-1');
     expect(result.id).toBe('pay-uuid-1');
+  });
+
+  it('gets a payment session for an order', async () => {
+    const req: any = { user: { sub: 'user-uuid-1' } };
+    const result = await controller.getPaymentSession(req, 'order-uuid-1');
+    expect(service.getPaymentSession).toHaveBeenCalledWith('user-uuid-1', 'order-uuid-1');
+    expect(result.orderId).toBe('order-uuid-1');
   });
 });
