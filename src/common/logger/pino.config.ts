@@ -19,7 +19,8 @@ type ExtendedRequest = IncomingMessage & {
 };
 
 /** Response bodies are logged as raw strings, so path-based redaction can't reach them. */
-const SECRET_RES_FIELDS = /("(?:accessToken|refreshToken|passwordSetupToken)"\s*:\s*")[^"]*"/g;
+const SECRET_RES_FIELDS =
+  /("(?:accessToken|refreshToken|passwordSetupToken|razorpaySignature)"\s*:\s*")[^"]*"/g;
 
 function redactResBody(s: string): string {
   return s.replace(SECRET_RES_FIELDS, '$1[Redacted]"');
@@ -55,6 +56,9 @@ const redactPaths = [
   'req.body.cvv',
   'req.body.pan',
   'req.body.expiry',
+  // Razorpay's proof of payment: with the order id it confirms an order, so keep it out of logs
+  'req.body.razorpaySignature',
+  'req.body.razorpay_signature',
   // Wildcards for nested payload protection
   '*.password',
   '*.currentPassword',
@@ -69,6 +73,8 @@ const redactPaths = [
   '*.cvv',
   '*.cardNumber',
   '*.pan',
+  '*.razorpaySignature',
+  '*.razorpay_signature',
 ];
 
 const devSerializers = {

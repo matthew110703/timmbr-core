@@ -82,6 +82,23 @@ describe('pinoConfig', () => {
       expect(String(log('a'.repeat(900)).resBody)).toContain('(+400 chars)');
     });
 
+    it('keeps the Razorpay payment signature out of logged bodies', () => {
+      const body = log('{"razorpaySignature":"deadbeef","orderId":"o1"}');
+      expect(body.resBody).toContain('[Redacted]');
+      expect(body.resBody).not.toContain('deadbeef');
+      expect(body.resBody).toContain('o1');
+    });
+
+    it('redacts the payment signature in logged request bodies too', () => {
+      const opts = Array.isArray(pinoConfig.pinoHttp)
+        ? pinoConfig.pinoHttp[0]
+        : pinoConfig.pinoHttp;
+      const paths = (opts as { redact: { paths: string[] } }).redact.paths;
+      expect(paths).toEqual(
+        expect.arrayContaining(['req.body.razorpaySignature', '*.razorpaySignature']),
+      );
+    });
+
     it('logs nothing for an empty body', () => {
       expect(log('')).not.toHaveProperty('resBody');
       expect(log(undefined)).not.toHaveProperty('resBody');
