@@ -33,6 +33,7 @@
     "listing:explain": "ts-node -r tsconfig-paths/register prisma/listing-explain.ts",
     "db:reset": "prisma migrate reset",
     "prepare": "husky",
+    "smoke:import": "node scripts/smoke-import.cjs",
     "check:types": "tsc --noEmit -p tsconfig.build.json",
     "commit": "node scripts/commit.mjs"
   },

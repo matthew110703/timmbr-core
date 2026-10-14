@@ -33,6 +33,7 @@ jobs:
       - run: pnpm check:types
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm smoke:import
 
   # Applies every migration to an empty Postgres, then fails if schema.prisma
   # has changes that no migration covers.

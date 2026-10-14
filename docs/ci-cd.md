@@ -10,7 +10,7 @@ Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
 
 ## Jobs
 
-- **`checks`**: `pnpm lint:check` (errors fail, warnings don't), `check:types`, `test`, `build`.
+- **`checks`**: `pnpm lint:check` (errors fail, warnings don't), `check:types`, `test`, `build`, then `smoke:import`, which loads the compiled app module graph with dummy env vars. SWC doesn't type-check, so this catches runtime import failures (e.g. a Prisma enum missing from a stale generated client) before deploy.
 - **`migrations`**: starts an empty Postgres, runs `prisma migrate deploy` (every migration must apply cleanly), then `prisma migrate diff --exit-code`. It fails if a `.prisma` file changed without a migration; fix that with `pnpm db:migrate` and commit the migration.
 - **`ci-ok`**: the one required status check for branch protection.
 - **`deploy-staging`**: runs only after both checks pass:
@@ -27,6 +27,8 @@ Deploys never cancel each other. A newer push waits until the running deploy fin
 **Render: staging web service**
 
 - Settings → Build & Deploy → **Auto-Deploy: Off**. Otherwise Render deploys on push, before CI.
+- Settings → Build & Deploy → **Build Command**: `pnpm install --frozen-lockfile && pnpm exec prisma generate && pnpm build && pnpm exec prisma migrate deploy`. The explicit `prisma generate` matters: Render restores a cached `node_modules`, pnpm then reports "Already up to date" and skips `postinstall`, leaving a stale Prisma client.
+- Settings → Build & Deploy → **Start Command**: `pnpm start:prod`. `pnpm start` runs `nest start`, which recompiles on every boot.
 - Settings → **Deploy Hook**: copy the URL (`https://api.render.com/deploy/srv-…?key=…`).
 - _(Optional, recommended)_ Account Settings → **API Keys** → create a key. Without it, CI can't confirm that the new deploy went live and only checks that `/health` responds.
 
