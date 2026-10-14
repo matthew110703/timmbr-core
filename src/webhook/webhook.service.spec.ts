@@ -12,32 +12,33 @@ describe('WebhookService', () => {
   let paymentRepository: jest.Mocked<PaymentRepository>;
   let webhookRepository: jest.Mocked<WebhookRepository>;
 
+  let tx: any;
+
   beforeEach(async () => {
+    tx = {
+      payment: { update: jest.fn().mockResolvedValue({}) },
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'order-uuid-1',
+          cartId: 'cart-uuid-1',
+          status: OrderStatus.PENDING,
+          items: [{ variantId: 'var-1', quantity: 1 }],
+        }),
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      inventory: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'inv-1', quantity: 5, reservedQuantity: 1 }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      inventoryTransaction: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+      cart: { update: jest.fn().mockResolvedValue({}) },
+    };
+
     const mockPrisma = {
-      $transaction: jest.fn((cb) => {
-        const tx = {
-          payment: { update: jest.fn().mockResolvedValue({}) },
-          order: {
-            findUnique: jest.fn().mockResolvedValue({
-              id: 'order-uuid-1',
-              status: OrderStatus.PENDING,
-              items: [{ variantId: 'var-1', quantity: 1 }],
-            }),
-            update: jest.fn().mockResolvedValue({}),
-            updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-          },
-          inventory: {
-            findUnique: jest
-              .fn()
-              .mockResolvedValue({ id: 'inv-1', quantity: 5, reservedQuantity: 1 }),
-            update: jest.fn().mockResolvedValue({}),
-          },
-          inventoryTransaction: {
-            create: jest.fn().mockResolvedValue({}),
-          },
-        };
-        return cb(tx);
-      }),
+      $transaction: jest.fn((cb) => cb(tx)),
     };
 
     const mockRazorpay = {
@@ -96,6 +97,29 @@ describe('WebhookService', () => {
     expect(razorpayService.verifyWebhookSignature).toHaveBeenCalled();
     expect(webhookRepository.recordEvent).toHaveBeenCalled();
     expect(result.received).toBe(true);
+    expect(tx.cart.update).toHaveBeenCalledWith({
+      where: { id: 'cart-uuid-1' },
+      data: { status: 'CONVERTED' },
+    });
+  });
+
+  it('leaves the cart alone when the order was no longer PENDING', async () => {
+    webhookRepository.findEvent.mockResolvedValue(null);
+    paymentRepository.findByProviderOrderId.mockResolvedValue({
+      id: 'pay-uuid-1',
+      orderId: 'order-uuid-1',
+      status: PaymentStatus.PENDING,
+    } as any);
+    tx.order.updateMany.mockResolvedValue({ count: 0 });
+
+    const payload = {
+      id: 'evt_late',
+      event: 'payment.captured',
+      payload: { payment: { entity: { id: 'pay_rzp_123', order_id: 'order_rzp_123' } } },
+    };
+    await service.handleRazorpayWebhook(JSON.stringify(payload), 'sig_123', payload);
+
+    expect(tx.cart.update).not.toHaveBeenCalled();
   });
 
   it('returns idempotent response if event was already processed', async () => {

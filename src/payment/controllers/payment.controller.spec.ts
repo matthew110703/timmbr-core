@@ -43,8 +43,9 @@ describe('PaymentController', () => {
       razorpaySignature: 'sig_123',
     };
 
-    const result = await controller.verifyRazorpayPayment(dto);
-    expect(service.verifyPayment).toHaveBeenCalledWith(dto);
+    const req: any = { user: { sub: 'user-uuid-1' } };
+    const result = await controller.verifyRazorpayPayment(req, dto);
+    expect(service.verifyPayment).toHaveBeenCalledWith('user-uuid-1', dto);
     expect(result.orderStatus).toBe(OrderStatus.CONFIRMED);
     expect(result.payment.status).toBe(PaymentStatus.PAID);
   });

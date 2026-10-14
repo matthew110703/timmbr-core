@@ -4,7 +4,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { RazorpayService } from '@/payment/razorpay.service';
 import { PaymentRepository } from '@/payment/payment.repository';
 import { WebhookRepository } from './webhook.repository';
-import { InventoryTransactionType, OrderStatus, PaymentStatus } from '@prisma/client';
+import { CartStatus, InventoryTransactionType, OrderStatus, PaymentStatus } from '@prisma/client';
 
 @Injectable()
 export class WebhookService {
@@ -112,6 +112,13 @@ export class WebhookService {
                     });
                   }
                 }
+              }
+
+              if (order.cartId) {
+                await tx.cart.update({
+                  where: { id: order.cartId },
+                  data: { status: CartStatus.CONVERTED },
+                });
               }
             }
           });

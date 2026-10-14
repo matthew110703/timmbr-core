@@ -39,14 +39,32 @@ export class RazorpayService {
     this.keyId = env.RAZORPAY_KEY_ID || '';
     this.keySecret = env.RAZORPAY_KEY_SECRET || '';
     this.webhookSecret = env.RAZORPAY_WEBHOOK_SECRET || '';
+
+    // Without the secrets, orders are mocked and signatures are not checked at all.
+    if (env.NODE_ENV === 'prod' && !(this.keyId && this.keySecret && this.webhookSecret)) {
+      this.logger.error(
+        'Razorpay key id, key secret and webhook secret must all be set in production. Payments are NOT verified.',
+      );
+    }
   }
 
   getKeyId(): string {
     return this.keyId;
   }
 
+  /** Production without secrets must refuse, never fall back to mock mode. */
+  private get failClosed(): boolean {
+    return env.NODE_ENV === 'prod';
+  }
+
   async createOrder(options: CreateRazorpayOrderOptions): Promise<RazorpayOrderResult> {
     if (!this.keyId || !this.keySecret) {
+      if (this.failClosed) {
+        this.logger.error(
+          'Razorpay keys are not configured in production; refusing to create an order.',
+        );
+        throw new RazorpayOrderCreationFailedException('Payments are not configured.');
+      }
       this.logger.warn(
         'Razorpay keys are not configured. Returning a mock order for development/testing.',
       );
@@ -104,6 +122,13 @@ export class RazorpayService {
     razorpaySignature: string;
   }): boolean {
     if (!this.keySecret) {
+      if (this.failClosed) {
+        // Accepting unsigned payments would let anyone confirm an order for free.
+        this.logger.error(
+          'Razorpay key secret missing in production; rejecting payment verification.',
+        );
+        throw new InvalidPaymentSignatureException();
+      }
       this.logger.warn(
         'Razorpay key secret not configured. Bypassing signature verification in mock mode.',
       );
@@ -135,6 +160,10 @@ export class RazorpayService {
 
   verifyWebhookSignature(rawBody: string, signature: string): boolean {
     if (!this.webhookSecret) {
+      if (this.failClosed) {
+        this.logger.error('Razorpay webhook secret missing in production; rejecting webhook.');
+        throw new InvalidWebhookSignatureException();
+      }
       this.logger.warn(
         'Razorpay webhook secret not configured. Bypassing webhook signature verification.',
       );
