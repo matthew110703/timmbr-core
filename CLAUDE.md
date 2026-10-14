@@ -16,7 +16,7 @@
 
 Prisma client regenerates automatically via the `postinstall` hook. For a manual regen: `pnpm exec prisma generate`.
 
-CI/CD (checks, migration drift check, staging deploy to Render): see [docs/ci-cd.md](docs/ci-cd.md).
+CI/CD (checks, migration drift check, staging deploy to Render): see [docs/ci-cd.md](docs/ci-cd.md). Checkout and Razorpay payment flow: [docs/payments.md](docs/payments.md).
 
 ---
 
