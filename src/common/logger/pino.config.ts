@@ -15,7 +15,7 @@ type ExtendedRequest = IncomingMessage & {
   body?: Record<string, unknown>;
   query?: Record<string, unknown>;
   params?: Record<string, unknown>;
-  __resBody?: string;
+  __resBody?: unknown;
 };
 
 /** Response bodies are logged as raw strings, so path-based redaction can't reach them. */
@@ -145,7 +145,10 @@ const sharedOptions = {
       url: req.url,
       status: res.statusCode,
       ...(userId ? { userId } : {}),
-      ...(usePretty && ext.__resBody ? { resBody: truncate(redactResBody(ext.__resBody)) } : {}),
+      // A logger must never throw: anything that is not text (a stream, a buffer) is skipped.
+      ...(usePretty && typeof ext.__resBody === 'string' && ext.__resBody
+        ? { resBody: truncate(redactResBody(ext.__resBody)) }
+        : {}),
     };
   },
   customErrorObject(

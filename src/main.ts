@@ -47,9 +47,12 @@ async function bootstrap() {
   });
 
   // Capture response body for structured logging and ensure header is retained
-  fastifyInstance.addHook('onSend', (request, reply, payload: string, done) => {
+  fastifyInstance.addHook('onSend', (request, reply, payload: unknown, done) => {
     reply.header('x-request-id', request.id);
-    (request.raw as { __resBody?: string }).__resBody = payload;
+    // Only text bodies can be logged: static files (Swagger UI) arrive as streams or buffers.
+    if (typeof payload === 'string') {
+      (request.raw as { __resBody?: string }).__resBody = payload;
+    }
     done(null, payload);
   });
 

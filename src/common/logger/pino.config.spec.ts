@@ -55,4 +55,36 @@ describe('pinoConfig', () => {
       });
     }
   });
+
+  describe('customSuccessObject (response body logging)', () => {
+    const successObject = () => {
+      const opts = Array.isArray(pinoConfig.pinoHttp)
+        ? pinoConfig.pinoHttp[0]
+        : pinoConfig.pinoHttp;
+      return (opts as { customSuccessObject: (...args: unknown[]) => Record<string, unknown> })
+        .customSuccessObject;
+    };
+    const res = { statusCode: 200 } as ServerResponse;
+    const log = (body: unknown) =>
+      successObject()({ id: 'r1', method: 'GET', url: '/x', __resBody: body }, res, {});
+
+    it('does not throw for a response that is not text (a file served as a buffer or stream)', () => {
+      expect(() => log(Buffer.from('console.log(1)'))).not.toThrow();
+      expect(() => log({ pipe: () => undefined })).not.toThrow();
+      expect(log(Buffer.from('x'))).not.toHaveProperty('resBody');
+    });
+
+    it('logs a text body, with tokens redacted and long bodies cut', () => {
+      const secret = log('{"accessToken":"abc123","ok":true}');
+      expect(secret.resBody).toContain('[Redacted]');
+      expect(secret.resBody).not.toContain('abc123');
+
+      expect(String(log('a'.repeat(900)).resBody)).toContain('(+400 chars)');
+    });
+
+    it('logs nothing for an empty body', () => {
+      expect(log('')).not.toHaveProperty('resBody');
+      expect(log(undefined)).not.toHaveProperty('resBody');
+    });
+  });
 });
