@@ -21,7 +21,9 @@ export class ProductResponseDto {
   hsnCode!: string | null;
   gstRate!: number;
   brandId!: string | null;
+  brand?: { id: string; name: string; slug?: string } | null;
   categoryId!: string;
+  category?: { id: string; name: string; slug?: string } | null;
   price?: number | null;
   compareAtPrice?: number | null;
   currency?: string | null;

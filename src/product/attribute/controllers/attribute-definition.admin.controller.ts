@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -43,10 +44,17 @@ export class AttributeDefinitionAdminController {
     return this.service.create(dto);
   }
 
-  @Put(ATTRIBUTE_ROUTES.DEFINITIONS.BY_ID)
+  @Patch(ATTRIBUTE_ROUTES.DEFINITIONS.BY_ID)
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Attribute definition updated successfully.')
   update(@Param('id') id: string, @Body() dto: UpdateAttributeDefinitionDto) {
+    return this.service.update(id, dto);
+  }
+
+  @Put(ATTRIBUTE_ROUTES.DEFINITIONS.BY_ID)
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Attribute definition updated successfully.')
+  updatePut(@Param('id') id: string, @Body() dto: UpdateAttributeDefinitionDto) {
     return this.service.update(id, dto);
   }
 

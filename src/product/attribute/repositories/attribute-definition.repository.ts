@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
 import { AttributeScope, Prisma } from '@prisma/client';
 import { AttributeDefinitionWithCount } from '../mappers/attribute.mapper';
+import type { AttributeSortField, SortOrder } from '../dto/get-attribute-definitions-query.dto';
 
 @Injectable()
 export class AttributeDefinitionRepository {
@@ -50,6 +51,8 @@ export class AttributeDefinitionRepository {
     where: Prisma.AttributeDefinitionWhereInput,
     page: number,
     limit: number,
+    sortBy: AttributeSortField = 'createdAt',
+    sortOrder: SortOrder = 'desc',
   ): Promise<[AttributeDefinitionWithCount[], number]> {
     const skip = (page - 1) * limit;
 
@@ -58,7 +61,7 @@ export class AttributeDefinitionRepository {
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { [sortBy]: sortOrder },
         include: {
           _count: {
             select: { values: true },

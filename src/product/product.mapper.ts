@@ -6,6 +6,8 @@ import { MediaService } from '@/media/media.service';
 
 export type ProductWithDetails = Product & {
   images?: ProductImage[];
+  brand?: { id: string; name: string; slug: string } | null;
+  category?: { id: string; name: string; slug: string } | null;
   attributeValues?: (AttributeValue & { definition: AttributeDefinition })[];
   variants?: (ProductVariantWithInventory & {
     attributeValues?: (AttributeValue & { definition: AttributeDefinition })[];
@@ -75,6 +77,8 @@ export class ProductMapper {
       compareAtPrice,
       currency,
       hasMultipleVariants,
+      ...(product.brand !== undefined && { brand: product.brand }),
+      ...(product.category !== undefined && { category: product.category }),
       ...(coverImage !== undefined && { coverImage }),
       ...(attributes && { attributes }),
       ...(variantOptions && { variantOptions }),

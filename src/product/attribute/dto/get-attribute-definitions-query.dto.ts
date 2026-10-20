@@ -2,6 +2,9 @@ import { AttributeScope, AttributeType } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 
+export type AttributeSortField = 'createdAt' | 'name' | 'filterOrder';
+export type SortOrder = 'asc' | 'desc';
+
 export class GetAttributeDefinitionsQueryDto {
   @IsOptional()
   @Type(() => Number)
@@ -40,4 +43,14 @@ export class GetAttributeDefinitionsQueryDto {
   @IsOptional()
   @IsUUID()
   productId?: string;
+
+  @IsOptional()
+  @IsEnum(['createdAt', 'name', 'filterOrder'], {
+    message: 'sortBy must be createdAt, name, or filterOrder',
+  })
+  sortBy?: AttributeSortField = 'createdAt';
+
+  @IsOptional()
+  @IsEnum(['asc', 'desc'], { message: 'sortOrder must be asc or desc' })
+  sortOrder?: SortOrder = 'desc';
 }

@@ -116,6 +116,8 @@ export class AttributeDefinitionService {
       where,
       page,
       limit,
+      query.sortBy ?? 'createdAt',
+      query.sortOrder ?? 'desc',
     );
 
     const totalPages = Math.ceil(total / limit);

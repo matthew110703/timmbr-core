@@ -32,7 +32,7 @@ export class ListingRepository {
   /** Filterable global attributes with their options, in panel order. */
   async findFacetDefinitions() {
     return this.prisma.attributeDefinition.findMany({
-      where: { isFilterable: true, productId: null, key: { not: null } },
+      where: { isFilterable: true, productId: null, key: { not: null }, options: { some: {} } },
       select: {
         id: true,
         key: true,

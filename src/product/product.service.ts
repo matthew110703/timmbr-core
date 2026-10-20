@@ -247,4 +247,13 @@ export class ProductService {
 
     return ProductMapper.toResponse(product, this.mediaService);
   }
+
+  async getStats(): Promise<{
+    total: number;
+    active: number;
+    draft: number;
+    archived: number;
+  }> {
+    return this.productRepository.getStats();
+  }
 }

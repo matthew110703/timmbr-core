@@ -19,6 +19,12 @@ export class ProductAdminController {
     return this.service.getAllProducts(query);
   }
 
+  @Get(PRODUCT_ROUTES.STATS)
+  @ResponseMessage('Product statistics retrieved successfully.')
+  getStats() {
+    return this.service.getStats();
+  }
+
   @Get(PRODUCT_ROUTES.BY_ID)
   @ResponseMessage('Product fetched successfully.')
   getProductById(@Param('productId') productId: string) {

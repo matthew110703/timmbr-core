@@ -1,6 +1,6 @@
 import { PrismaService } from '@/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';
-import { Product, Prisma, VariantStatus } from '@prisma/client';
+import { Product, Prisma, ProductStatus, VariantStatus } from '@prisma/client';
 import { ProductWithDetails } from './product.mapper';
 
 @Injectable()
@@ -130,6 +130,12 @@ export class ProductRepository {
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
+          brand: {
+            select: { id: true, name: true, slug: true },
+          },
+          category: {
+            select: { id: true, name: true, slug: true },
+          },
           images: {
             orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
             take: 1,
@@ -173,6 +179,27 @@ export class ProductRepository {
       where: { id },
       data,
     });
+  }
+
+  async getStats(): Promise<{
+    total: number;
+    active: number;
+    draft: number;
+    archived: number;
+  }> {
+    const [total, active, draft, archived] = await Promise.all([
+      this.prisma.product.count(),
+      this.prisma.product.count({ where: { status: ProductStatus.ACTIVE } }),
+      this.prisma.product.count({ where: { status: ProductStatus.DRAFT } }),
+      this.prisma.product.count({ where: { status: ProductStatus.ARCHIVED } }),
+    ]);
+
+    return {
+      total,
+      active,
+      draft,
+      archived,
+    };
   }
 
   async delete(id: string): Promise<Product> {
