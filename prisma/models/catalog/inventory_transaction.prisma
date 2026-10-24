@@ -23,7 +23,7 @@ model InventoryTransaction {
   createdAt      DateTime                 @default(now())
 
   // Relations
-  inventory Inventory @relation(fields: [inventoryId], references: [id])
+  inventory Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
 
   @@index([inventoryId])
 }

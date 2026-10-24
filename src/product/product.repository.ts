@@ -207,4 +207,11 @@ export class ProductRepository {
       where: { id },
     });
   }
+
+  async bulkDelete(productIds: string[]): Promise<number> {
+    const result = await this.prisma.product.deleteMany({
+      where: { id: { in: productIds } },
+    });
+    return result.count;
+  }
 }

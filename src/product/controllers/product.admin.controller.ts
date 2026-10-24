@@ -6,6 +6,7 @@ import { ProductService } from '../product.service';
 import { GetProductsQueryDto } from '../dto/get-products-query.dto';
 import { CreateProductDto } from '../dto/create-product.dto';
 import { UpdateProductDto } from '../dto/update-product.dto';
+import { BulkDeleteProductsDto } from '../dto/bulk-delete-products.dto';
 import { PRODUCT_ROUTES } from '../product.routes';
 
 @Controller(`${APP_ROUTES.PREFIX.ADMIN}/${APP_ROUTES.PRODUCTS}`)
@@ -45,6 +46,14 @@ export class ProductAdminController {
   @ResponseMessage('Product added successfully.')
   create(@Body() dto: CreateProductDto) {
     return this.service.create(dto);
+  }
+
+  @Delete()
+  @HttpCode(200)
+  @Roles(UserRole.MASTER, UserRole.ADMIN)
+  @ResponseMessage('Products deleted successfully.')
+  bulkDelete(@Body() dto: BulkDeleteProductsDto) {
+    return this.service.bulkDeleteProducts(dto.productIds);
   }
 
   @Delete(PRODUCT_ROUTES.BY_ID)

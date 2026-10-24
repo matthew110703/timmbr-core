@@ -248,6 +248,11 @@ export class ProductService {
     return ProductMapper.toResponse(product, this.mediaService);
   }
 
+  async bulkDeleteProducts(productIds: string[]): Promise<{ deletedCount: number }> {
+    const deletedCount = await this.productRepository.bulkDelete(productIds);
+    return { deletedCount };
+  }
+
   async getStats(): Promise<{
     total: number;
     active: number;
