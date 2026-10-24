@@ -1,6 +1,7 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { Resend } from 'resend';
 import { env } from '@/config/env';
+import { OTP_TTL_S } from '@/auth/auth.constants';
 import { resetPasswordEmailTemplate } from './templates/reset-password-email.template';
 import { otpEmailTemplate } from './templates/otp-email.template';
 
@@ -19,7 +20,7 @@ export class MailerService {
       from: env.MAIL_FROM,
       to,
       subject: `${otpCode} is your Timmbr verification code`,
-      html: otpEmailTemplate(firstName, otpCode),
+      html: otpEmailTemplate(firstName, otpCode, Math.floor(OTP_TTL_S / 60)),
     });
 
     if (error) {
