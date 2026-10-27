@@ -26,6 +26,7 @@ Deploys never cancel each other. A newer push waits until the running deploy fin
 
 **Render: staging web service**
 
+- **Node**: match repo [`.nvmrc`](../.nvmrc) (`24.22.1`) in the service environment (or set `NODE_VERSION=24.22.1` if your runtime reads it).
 - Settings → Build & Deploy → **Auto-Deploy: Off**. Otherwise Render deploys on push, before CI.
 - Settings → Build & Deploy → **Build Command**: `pnpm install --frozen-lockfile && pnpm exec prisma generate && pnpm build && pnpm exec prisma migrate deploy`. The explicit `prisma generate` matters: Render restores a cached `node_modules`, pnpm then reports "Already up to date" and skips `postinstall`, leaving a stale Prisma client.
 - Settings → Build & Deploy → **Start Command**: `pnpm start:prod`. `pnpm start` runs `nest start`, which recompiles on every boot.
