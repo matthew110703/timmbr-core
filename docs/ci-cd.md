@@ -16,7 +16,16 @@ Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
 - **`deploy-staging`**: runs only after both checks pass:
   1. POSTs the Render deploy hook with `ref=<commit>`, so Render deploys exactly the commit that passed CI.
   2. If `RENDER_API_KEY` is set, polls the Render API until the deploy is `live`, and fails on a failed or cancelled deploy.
-  3. Polls `<STAGING_API_URL>/health` for up to ~3 minutes, to allow for free-instance cold starts.
+  3. Polls `<STAGING_API_URL>/health` for up to ~3 minutes, to allow for free-instance cold starts. `/health` (alias of `/health/ready`) returns 200 only when Postgres and Redis are both reachable.
+
+**Health routes** (unversioned, outside `/api`, not rate-limited, not request-logged):
+
+| Route | Checks | Used by |
+|---|---|---|
+| `GET /health/live` | process is up | Render Health Check Path |
+| `GET /health/ready`, `GET /health` | Postgres + Redis, 2 s timeout each | CI deploy check, uptime monitors |
+
+On failure the response is `503` with the failing dependency marked `down` and the message `"unavailable"`. The real error is only written to the server logs.
 
 **Staging migrations are applied manually**: CI never connects to the staging database. Before pushing a change that adds migrations, run `pnpm exec prisma migrate deploy` against staging. Keep migrations backwards-compatible, so the running version keeps working until the new deploy is live.
 
@@ -31,6 +40,7 @@ Deploys never cancel each other. A newer push waits until the running deploy fin
 - Settings → Build & Deploy → **Build Command**: `pnpm install --frozen-lockfile && pnpm exec prisma generate && pnpm build && pnpm exec prisma migrate deploy`. The explicit `prisma generate` matters: Render restores a cached `node_modules`, pnpm then reports "Already up to date" and skips `postinstall`, leaving a stale Prisma client.
 - Settings → Build & Deploy → **Start Command**: `pnpm start:prod`. `pnpm start` runs `nest start`, which recompiles on every boot.
 - Settings → **Deploy Hook**: copy the URL (`https://api.render.com/deploy/srv-…?key=…`).
+- Settings → **Health Check Path**: `/health/live`. Don't use `/health`: it also checks Postgres and Redis, and a brief outage of either would make Render restart instances that are fine.
 - _(Optional, recommended)_ Account Settings → **API Keys** → create a key. Without it, CI can't confirm that the new deploy went live and only checks that `/health` responds.
 
 **GitHub: repo → Settings → Environments → `staging`**

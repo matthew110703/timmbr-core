@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { Redis } from 'ioredis';
 
 /** INCR + first-time EXPIRE in one step, so a crash can't leave a key without TTL. */
@@ -26,8 +26,18 @@ return value`;
 export type ConsumeResult = 'consumed' | 'mismatch' | 'missing';
 
 @Injectable()
-export class RedisService {
+export class RedisService implements OnApplicationShutdown {
   constructor(@Inject('REDIS_CLIENT') private readonly client: Redis) {}
+
+  /** Liveness probe for health checks. Resolves to 'PONG'. */
+  ping() {
+    return this.client.ping();
+  }
+
+  /** Close the connection cleanly on SIGTERM/SIGINT (see `app.enableShutdownHooks()`). */
+  async onApplicationShutdown() {
+    await this.client.quit().catch(() => this.client.disconnect());
+  }
 
   setWithTTL(key: string, ttlSeconds: number, value: string) {
     return this.client.setex(key, ttlSeconds, value);

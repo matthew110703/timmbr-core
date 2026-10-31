@@ -8,7 +8,6 @@ import {
   VersioningType,
 } from '@nestjs/common';
 import { setupSwagger } from './config/swagger.config';
-import { PrismaService } from './prisma/prisma.service';
 import { Logger } from 'nestjs-pino';
 import { env, parseOrigins } from './config/env';
 import { APP_CONFIG } from './config/app.config';
@@ -95,7 +94,7 @@ async function bootstrap() {
   });
 
   // Global prefix and URI versioning
-  app.setGlobalPrefix(APP_CONFIG.apiPrefix, { exclude: ['/health'] });
+  app.setGlobalPrefix(APP_CONFIG.apiPrefix, { exclude: ['health', 'health/(.*)'] });
   app.enableVersioning({
     type: VersioningType.URI,
     defaultVersion: APP_CONFIG.defaultVersion,
@@ -127,9 +126,8 @@ async function bootstrap() {
   // Swagger — dev only, see src/config/swagger.config.ts
   setupSwagger(app);
 
-  // Prisma shutdown hooks
-  const prismaService = app.get(PrismaService);
-  prismaService.enableShutdownHooks(app);
+  // Run onModuleDestroy / onApplicationShutdown hooks (Prisma, Redis, Terminus) on SIGTERM / SIGINT
+  app.enableShutdownHooks();
 
   const port = env.PORT ?? 8001;
   await app.listen(port, '0.0.0.0');

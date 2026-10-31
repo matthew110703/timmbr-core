@@ -121,7 +121,12 @@ const sharedOptions = {
   },
   autoLogging: {
     ignore(req: IncomingMessage) {
-      return ['/health', '/metrics', '/favicon.ico'].includes(req.url ?? '');
+      const path = (req.url ?? '').split('?')[0];
+      return (
+        path === '/health' ||
+        path.startsWith('/health/') ||
+        ['/metrics', '/favicon.ico'].includes(path)
+      );
     },
   },
   customLogLevel(_req: IncomingMessage, res: ServerResponse<IncomingMessage>, err: unknown) {
