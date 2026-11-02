@@ -4,6 +4,7 @@ allowBuilds:
   '@scarf/scarf': true
   '@swc/core': true
   argon2: true
+  msgpackr-extract: false
   prisma: true
   unrs-resolver: true
 peerDependencyRules:

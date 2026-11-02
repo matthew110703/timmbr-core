@@ -5,6 +5,7 @@ import { RazorpayService } from '@/payment/razorpay.service';
 import { PaymentRepository } from '@/payment/payment.repository';
 import { WebhookRepository } from './webhook.repository';
 import { CartStatus, InventoryTransactionType, OrderStatus, PaymentStatus } from '@prisma/client';
+import { InvoiceIssuanceService } from '@/invoice/invoice-issuance.service';
 
 @Injectable()
 export class WebhookService {
@@ -15,6 +16,7 @@ export class WebhookService {
     private readonly razorpayService: RazorpayService,
     private readonly paymentRepository: PaymentRepository,
     private readonly webhookRepository: WebhookRepository,
+    private readonly invoiceIssuanceService: InvoiceIssuanceService,
   ) {}
 
   async handleRazorpayWebhook(
@@ -46,8 +48,8 @@ export class WebhookService {
       if (providerOrderId) {
         const payment = await this.paymentRepository.findByProviderOrderId(providerOrderId);
         if (payment && payment.status !== PaymentStatus.PAID) {
-          await this.prisma.$transaction(async (tx) => {
-            await tx.payment.update({
+          const txResult = await this.prisma.$transaction(async (tx) => {
+            const paidPayment = await tx.payment.update({
               where: { id: payment.id },
               data: {
                 status: PaymentStatus.PAID,
@@ -77,7 +79,7 @@ export class WebhookService {
                 this.logger.warn(
                   `Order ${order.id} was no longer PENDING when payment arrived — skipping confirmation.`,
                 );
-                return;
+                return { confirmedNow: false, paidPayment, orderId: order.id };
               }
 
               for (const item of byVariantId(order.items)) {
@@ -120,8 +122,19 @@ export class WebhookService {
                   data: { status: CartStatus.CONVERTED },
                 });
               }
+
+              return { confirmedNow: true, paidPayment, orderId: order.id };
             }
+
+            return { confirmedNow: false, paidPayment, orderId: payment.orderId };
           });
+
+          if (txResult.confirmedNow) {
+            await this.invoiceIssuanceService.issueForConfirmedOrderSafely({
+              orderId: txResult.orderId,
+              payment: txResult.paidPayment,
+            });
+          }
         }
       }
     } else if (eventType === 'payment.failed') {

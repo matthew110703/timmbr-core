@@ -1,7 +1,6 @@
 enum AddressType {
     SHIPPING
     BILLING
-    BOTH
 }
 
 model Address {

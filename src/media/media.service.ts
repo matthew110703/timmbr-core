@@ -1,6 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { STORAGE_PROVIDER } from './interfaces/storage-provider.interface';
+import {
+  PresignedDownloadOptions,
+  PresignedDownloadResult,
+  PutBufferOptions,
+  STORAGE_PROVIDER,
+} from './interfaces/storage-provider.interface';
 import type { StorageProvider } from './interfaces/storage-provider.interface';
 import { GeneratePresignedUrlsDto, PresignedUrlItemDto } from './dto/generate-presigned-url.dto';
 import { getExtensionForMime, validateMediaItem } from './common/media-validation.util';
@@ -63,6 +68,20 @@ export class MediaService {
       publicUrl,
       expiresIn: presigned.expiresIn,
     };
+  }
+
+  async getPresignedDownloadUrl(
+    options: PresignedDownloadOptions,
+  ): Promise<PresignedDownloadResult> {
+    return this.storageProvider.getPresignedDownloadUrl(options);
+  }
+
+  async putBuffer(options: PutBufferOptions): Promise<void> {
+    await this.storageProvider.putBuffer(options);
+  }
+
+  async getBuffer(key: string): Promise<Buffer> {
+    return this.storageProvider.getBuffer(key);
   }
 
   async exists(key: string): Promise<boolean> {

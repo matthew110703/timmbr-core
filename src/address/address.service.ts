@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Address } from '@prisma/client';
+import { Address, AddressType } from '@prisma/client';
 import {
   AddressAlreadyDefaultException,
   AddressForbiddenException,
@@ -18,17 +18,20 @@ const ADDRESS_LIMIT = 10;
 export class AddressService {
   constructor(private readonly addressRepository: AddressRepository) {}
 
-  async getAll(userId: string): Promise<AddressResponseDto[]> {
-    const addresses = await this.addressRepository.findManyByUserId(userId);
+  async getAll(userId: string, type?: AddressType): Promise<AddressResponseDto[]> {
+    const addresses = await this.addressRepository.findManyByUserId(userId, type);
     return addresses.map((a) => AddressMapper.toResponse(a));
   }
 
   async create(userId: string, dto: CreateAddressDto): Promise<AddressResponseDto> {
-    const count = await this.addressRepository.countByUserId(userId);
-    if (count >= ADDRESS_LIMIT) throw new AddressLimitReachedException();
+    const totalCount = await this.addressRepository.countByUserId(userId);
+    if (totalCount >= ADDRESS_LIMIT) throw new AddressLimitReachedException();
 
-    const isFirst = count === 0;
-    const makeDefault = isFirst || dto.isDefault === true;
+    const addressType = dto.type ?? AddressType.SHIPPING;
+    const typeCount = await this.addressRepository.countByUserId(userId, addressType);
+
+    const isFirstOfType = typeCount === 0;
+    const makeDefault = isFirstOfType || dto.isDefault === true;
 
     const payload = {
       userId,
@@ -44,12 +47,16 @@ export class AddressService {
       isDefault: makeDefault,
       latitude: dto.latitude,
       longitude: dto.longitude,
-      type: dto.type,
+      type: addressType,
       label: dto.label,
     };
 
-    if (makeDefault && !isFirst) {
-      const address = await this.addressRepository.createWithNewDefault(userId, payload);
+    if (makeDefault && !isFirstOfType) {
+      const address = await this.addressRepository.createWithNewDefault(
+        userId,
+        payload,
+        addressType,
+      );
       return AddressMapper.toResponse(address);
     }
 
@@ -90,7 +97,11 @@ export class AddressService {
     const address = await this.findOwned(userId, addressId);
 
     if (address.isDefault) {
-      const oldest = await this.addressRepository.findOldestOtherAddress(userId, addressId);
+      const oldest = await this.addressRepository.findOldestOtherAddress(
+        userId,
+        addressId,
+        address.type,
+      );
       await this.addressRepository.deleteDefaultAndSetNext(addressId, oldest?.id ?? null);
       return { newDefaultAddressId: oldest?.id ?? null };
     }
@@ -103,7 +114,7 @@ export class AddressService {
     const address = await this.findOwned(userId, addressId);
     if (address.isDefault) throw new AddressAlreadyDefaultException();
 
-    const updated = await this.addressRepository.setDefault(userId, addressId);
+    const updated = await this.addressRepository.setDefault(userId, addressId, address.type);
     return AddressMapper.toResponse(updated);
   }
 

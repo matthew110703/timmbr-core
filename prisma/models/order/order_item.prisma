@@ -10,9 +10,11 @@ model OrderItem {
 
   quantity Int
 
-  // Historical pricing
-  unitPrice  Decimal
-  totalPrice Decimal
+  // Historical pricing (GST-inclusive)
+  originalUnitPrice Decimal?
+  unitPrice         Decimal
+  discountAmount    Decimal  @default(0)
+  totalPrice        Decimal
 
   // Historical tax information
   hsnCode   String?

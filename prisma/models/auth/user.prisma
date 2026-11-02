@@ -28,4 +28,5 @@ model User {
     orders Order[]
     carts Cart[]
     wishlist Wishlist?
+    voidedInvoices Invoice[] @relation("VoidedInvoices")
 }

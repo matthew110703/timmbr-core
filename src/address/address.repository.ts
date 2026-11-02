@@ -1,27 +1,40 @@
 import { Injectable } from '@nestjs/common';
-import { Address, Prisma } from '@prisma/client';
+import { Address, AddressType, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 
 @Injectable()
 export class AddressRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findManyByUserId(userId: string): Promise<Address[]> {
+  async findManyByUserId(userId: string, type?: AddressType): Promise<Address[]> {
     return this.prisma.address.findMany({
-      where: { userId },
+      where: {
+        userId,
+        ...(type && { type }),
+      },
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
     });
   }
 
-  async countByUserId(userId: string): Promise<number> {
+  async countByUserId(userId: string, type?: AddressType): Promise<number> {
     return this.prisma.address.count({
-      where: { userId },
+      where: {
+        userId,
+        ...(type && { type }),
+      },
     });
   }
 
   async findById(id: string): Promise<Address | null> {
     return this.prisma.address.findUnique({
       where: { id },
+    });
+  }
+
+  async findDefaultByUserAndType(userId: string, type: AddressType): Promise<Address | null> {
+    return this.prisma.address.findFirst({
+      where: { userId, type, isDefault: true },
+      orderBy: { createdAt: 'asc' },
     });
   }
 
@@ -36,15 +49,17 @@ export class AddressRepository {
   async createWithNewDefault(
     userId: string,
     data: Prisma.AddressCreateInput | Prisma.AddressUncheckedCreateInput,
+    type: AddressType = AddressType.SHIPPING,
   ): Promise<Address> {
     return this.prisma.$transaction(async (tx) => {
       await tx.address.updateMany({
-        where: { userId, isDefault: true },
+        where: { userId, type, isDefault: true },
         data: { isDefault: false },
       });
       return tx.address.create({
         data: {
           ...data,
+          type,
           isDefault: true,
         },
       });
@@ -61,9 +76,13 @@ export class AddressRepository {
     });
   }
 
-  async findOldestOtherAddress(userId: string, excludeAddressId: string): Promise<Address | null> {
+  async findOldestOtherAddress(
+    userId: string,
+    excludeAddressId: string,
+    type: AddressType = AddressType.SHIPPING,
+  ): Promise<Address | null> {
     return this.prisma.address.findFirst({
-      where: { userId, id: { not: excludeAddressId } },
+      where: { userId, type, id: { not: excludeAddressId } },
       orderBy: { createdAt: 'asc' },
     });
   }
@@ -91,10 +110,14 @@ export class AddressRepository {
     });
   }
 
-  async setDefault(userId: string, addressId: string): Promise<Address> {
+  async setDefault(
+    userId: string,
+    addressId: string,
+    type: AddressType = AddressType.SHIPPING,
+  ): Promise<Address> {
     return this.prisma.$transaction(async (tx) => {
       await tx.address.updateMany({
-        where: { userId, isDefault: true },
+        where: { userId, type, isDefault: true },
         data: { isDefault: false },
       });
       return tx.address.update({

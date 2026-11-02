@@ -25,6 +25,11 @@ model Order {
   // Address reference & immutable checkout snapshot
   shippingAddressId String?
   shippingAddress   Json
+  billingAddressId  String?
+  billingAddress    Json?
+
+  // Administrative flag if invoice issuance is blocked after payment commit
+  invoiceIssueError String?
 
   expiresAt         DateTime?
   placedAt          DateTime?
@@ -36,6 +41,7 @@ model Order {
   cart              Cart?       @relation(fields: [cartId], references: [id])
   items             OrderItem[]
   payments          Payment[]
+  invoice           Invoice?
 
   @@index([status, expiresAt])
 }

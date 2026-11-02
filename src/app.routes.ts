@@ -14,6 +14,7 @@ export const APP_ROUTES = {
   WISHLIST: 'wishlist',
   CHECKOUT: 'checkout',
   ORDERS: 'orders',
+  INVOICES: 'invoices',
   PAYMENTS: 'payments',
   WEBHOOKS: 'webhooks',
   ADDRESSES: 'addresses',

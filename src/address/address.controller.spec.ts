@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import type { FastifyRequest } from 'fastify';
+import { AddressType } from '@prisma/client';
 import { AddressController } from './address.controller';
 import { AddressService } from './address.service';
 import { CreateAddressDto } from './dto/create-address.dto';
@@ -38,13 +39,23 @@ describe('AddressController', () => {
   // ─── getAll ──────────────────────────────────────────────────────────────────
 
   describe('getAll (GET /addresses)', () => {
-    it('calls address.getAll with the user id and returns the result', async () => {
+    it('calls address.getAll with the user id and optional type filter', async () => {
       const expected = [{ id: 'addr-1' }];
       (mockAddressService.getAll as jest.Mock).mockResolvedValue(expected);
 
       const result = await controller.getAll(mockReq());
 
-      expect(mockAddressService.getAll).toHaveBeenCalledWith('user-id-1');
+      expect(mockAddressService.getAll).toHaveBeenCalledWith('user-id-1', undefined);
+      expect(result).toBe(expected);
+    });
+
+    it('passes the type query filter to address.getAll when provided', async () => {
+      const expected = [{ id: 'addr-billing-1', type: AddressType.BILLING }];
+      (mockAddressService.getAll as jest.Mock).mockResolvedValue(expected);
+
+      const result = await controller.getAll(mockReq(), { type: AddressType.BILLING });
+
+      expect(mockAddressService.getAll).toHaveBeenCalledWith('user-id-1', AddressType.BILLING);
       expect(result).toBe(expected);
     });
   });

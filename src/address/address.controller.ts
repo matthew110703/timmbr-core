@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
   Req,
 } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
@@ -17,6 +18,7 @@ import { ResponseMessage } from '@/common/decorators';
 import { AddressService } from './address.service';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
+import { GetAddressesQueryDto } from './dto/get-addresses-query.dto';
 import { ADDRESS_ROUTES } from './address.routes';
 
 @Controller(APP_ROUTES.ADDRESSES)
@@ -25,9 +27,9 @@ export class AddressController {
 
   @Get()
   @ResponseMessage('Addresses fetched successfully.')
-  getAll(@Req() req: FastifyRequest) {
+  getAll(@Req() req: FastifyRequest, @Query() query?: GetAddressesQueryDto) {
     const user = req.user as unknown as JwtPayload;
-    return this.address.getAll(user.sub);
+    return this.address.getAll(user.sub, query?.type);
   }
 
   @Post()

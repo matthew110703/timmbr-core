@@ -41,6 +41,7 @@ const mockAddressRepository = {
   findManyByUserId: jest.fn(),
   countByUserId: jest.fn(),
   findById: jest.fn(),
+  findDefaultByUserAndType: jest.fn(),
   create: jest.fn(),
   createWithNewDefault: jest.fn(),
   update: jest.fn(),
@@ -79,9 +80,23 @@ describe('AddressService', () => {
 
       const result = await service.getAll(USER_ID);
 
-      expect(mockAddressRepository.findManyByUserId).toHaveBeenCalledWith(USER_ID);
+      expect(mockAddressRepository.findManyByUserId).toHaveBeenCalledWith(USER_ID, undefined);
       expect(result).toHaveLength(2);
       expect(result[0]).toMatchObject({ fname: 'Test', lname: 'User', isDefault: true });
+    });
+
+    it('filters by AddressType when type is provided', async () => {
+      const billingAddresses = [{ ...baseAddress, type: AddressType.BILLING, isDefault: true }];
+      mockAddressRepository.findManyByUserId.mockResolvedValue(billingAddresses);
+
+      const result = await service.getAll(USER_ID, AddressType.BILLING);
+
+      expect(mockAddressRepository.findManyByUserId).toHaveBeenCalledWith(
+        USER_ID,
+        AddressType.BILLING,
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe(AddressType.BILLING);
     });
 
     it('returns an empty array when the user has no addresses', async () => {
@@ -107,22 +122,54 @@ describe('AddressService', () => {
       country: 'India',
     };
 
-    it('forces isDefault=true for the very first address regardless of dto.isDefault', async () => {
+    it('forces isDefault=true for the very first address of a given type regardless of dto.isDefault', async () => {
       const created = { ...baseAddress, isDefault: true };
-      mockAddressRepository.countByUserId.mockResolvedValue(0);
+      mockAddressRepository.countByUserId
+        .mockResolvedValueOnce(1) // total count
+        .mockResolvedValueOnce(0); // count of type SHIPPING
       mockAddressRepository.create.mockResolvedValue(created);
 
       const result = await service.create(USER_ID, { ...dto, isDefault: false });
 
+      expect(mockAddressRepository.countByUserId).toHaveBeenCalledWith(
+        USER_ID,
+        AddressType.SHIPPING,
+      );
       expect(mockAddressRepository.create).toHaveBeenCalledWith(
-        expect.objectContaining({ isDefault: true }),
+        expect.objectContaining({ isDefault: true, type: AddressType.SHIPPING }),
       );
       expect(result.isDefault).toBe(true);
     });
 
-    it('creates a subsequent address with isDefault=false when not requested as default', async () => {
+    it('maintains separate defaults: first BILLING address becomes default BILLING even if user has SHIPPING addresses', async () => {
+      const created = { ...baseAddress, type: AddressType.BILLING, isDefault: true };
+      mockAddressRepository.countByUserId
+        .mockResolvedValueOnce(2) // 2 total addresses (SHIPPING)
+        .mockResolvedValueOnce(0); // 0 BILLING addresses
+      mockAddressRepository.create.mockResolvedValue(created);
+
+      const result = await service.create(USER_ID, {
+        ...dto,
+        type: AddressType.BILLING,
+        isDefault: false,
+      });
+
+      expect(mockAddressRepository.countByUserId).toHaveBeenCalledWith(
+        USER_ID,
+        AddressType.BILLING,
+      );
+      expect(mockAddressRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ isDefault: true, type: AddressType.BILLING }),
+      );
+      expect(result.isDefault).toBe(true);
+      expect(result.type).toBe(AddressType.BILLING);
+    });
+
+    it('creates a subsequent address of the same type with isDefault=false when not requested as default', async () => {
       const created = { ...baseAddress, isDefault: false };
-      mockAddressRepository.countByUserId.mockResolvedValue(1);
+      mockAddressRepository.countByUserId
+        .mockResolvedValueOnce(1) // total count
+        .mockResolvedValueOnce(1); // count of SHIPPING
       mockAddressRepository.create.mockResolvedValue(created);
 
       const result = await service.create(USER_ID, { ...dto, isDefault: false });
@@ -133,16 +180,19 @@ describe('AddressService', () => {
       expect(result.isDefault).toBe(false);
     });
 
-    it('demotes the existing default in a transaction when dto.isDefault=true', async () => {
-      const created = { ...baseAddress, isDefault: true };
-      mockAddressRepository.countByUserId.mockResolvedValue(2);
+    it('demotes only the existing default of the same type when dto.isDefault=true', async () => {
+      const created = { ...baseAddress, type: AddressType.BILLING, isDefault: true };
+      mockAddressRepository.countByUserId
+        .mockResolvedValueOnce(3) // total count
+        .mockResolvedValueOnce(1); // count of BILLING
       mockAddressRepository.createWithNewDefault.mockResolvedValue(created);
 
-      await service.create(USER_ID, { ...dto, isDefault: true });
+      await service.create(USER_ID, { ...dto, type: AddressType.BILLING, isDefault: true });
 
       expect(mockAddressRepository.createWithNewDefault).toHaveBeenCalledWith(
         USER_ID,
-        expect.objectContaining({ isDefault: true }),
+        expect.objectContaining({ isDefault: true, type: AddressType.BILLING }),
+        AddressType.BILLING,
       );
     });
 
@@ -232,15 +282,25 @@ describe('AddressService', () => {
       expect(result).toEqual({ newDefaultAddressId: null });
     });
 
-    it('promotes oldest remaining address when the deleted address was the default', async () => {
-      const defaultAddress = { ...baseAddress, isDefault: true };
-      const oldestRemaining = { ...baseAddress, id: ADDRESS_ID_2, isDefault: false };
-      mockAddressRepository.findById.mockResolvedValue(defaultAddress);
-      mockAddressRepository.findOldestOtherAddress.mockResolvedValue(oldestRemaining);
+    it('promotes oldest remaining address of the same type when the deleted address was the default', async () => {
+      const defaultBilling = { ...baseAddress, type: AddressType.BILLING, isDefault: true };
+      const oldestRemainingBilling = {
+        ...baseAddress,
+        id: ADDRESS_ID_2,
+        type: AddressType.BILLING,
+        isDefault: false,
+      };
+      mockAddressRepository.findById.mockResolvedValue(defaultBilling);
+      mockAddressRepository.findOldestOtherAddress.mockResolvedValue(oldestRemainingBilling);
       mockAddressRepository.deleteDefaultAndSetNext.mockResolvedValue(undefined);
 
       const result = await service.remove(USER_ID, ADDRESS_ID);
 
+      expect(mockAddressRepository.findOldestOtherAddress).toHaveBeenCalledWith(
+        USER_ID,
+        ADDRESS_ID,
+        AddressType.BILLING,
+      );
       expect(mockAddressRepository.deleteDefaultAndSetNext).toHaveBeenCalledWith(
         ADDRESS_ID,
         ADDRESS_ID_2,
@@ -248,7 +308,7 @@ describe('AddressService', () => {
       expect(result).toEqual({ newDefaultAddressId: ADDRESS_ID_2 });
     });
 
-    it('returns { newDefaultAddressId: null } when deleting the last/only address', async () => {
+    it('returns { newDefaultAddressId: null } when deleting the last/only address of that type', async () => {
       const defaultAddress = { ...baseAddress, isDefault: true };
       mockAddressRepository.findById.mockResolvedValue(defaultAddress);
       mockAddressRepository.findOldestOtherAddress.mockResolvedValue(null);
@@ -269,15 +329,19 @@ describe('AddressService', () => {
   // ─── setDefault ──────────────────────────────────────────────────────────────
 
   describe('setDefault', () => {
-    it('promotes the address to default and demotes others in a transaction', async () => {
-      const nonDefaultAddress = { ...baseAddress, isDefault: false };
-      const promoted = { ...baseAddress, isDefault: true };
-      mockAddressRepository.findById.mockResolvedValue(nonDefaultAddress);
+    it('promotes the address to default and demotes others of the same type in a transaction', async () => {
+      const nonDefaultBilling = { ...baseAddress, type: AddressType.BILLING, isDefault: false };
+      const promoted = { ...baseAddress, type: AddressType.BILLING, isDefault: true };
+      mockAddressRepository.findById.mockResolvedValue(nonDefaultBilling);
       mockAddressRepository.setDefault.mockResolvedValue(promoted);
 
       const result = await service.setDefault(USER_ID, ADDRESS_ID);
 
-      expect(mockAddressRepository.setDefault).toHaveBeenCalledWith(USER_ID, ADDRESS_ID);
+      expect(mockAddressRepository.setDefault).toHaveBeenCalledWith(
+        USER_ID,
+        ADDRESS_ID,
+        AddressType.BILLING,
+      );
       expect(result.isDefault).toBe(true);
     });
 

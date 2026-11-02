@@ -34,3 +34,12 @@ export class AddressLimitReachedException extends UnprocessableEntityException {
     });
   }
 }
+
+export class AddressInvalidTypeException extends UnprocessableEntityException {
+  constructor(message = 'Invalid address type for this operation.') {
+    super({
+      message,
+      code: 'ADDRESS_INVALID_TYPE',
+    });
+  }
+}

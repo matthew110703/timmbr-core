@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
-import { OrderRepository } from './order.repository';
+import { invoiceSummarySelect, itemsWithImages, OrderRepository } from './order.repository';
 import { OrderPricingService } from './order-pricing.service';
 import { RazorpayService } from '@/payment/razorpay.service';
 import { PaymentRepository } from '@/payment/payment.repository';
@@ -98,11 +98,13 @@ export class OrderService {
     }
 
     // 1. Validate items, address, and calculate pricing
-    const { addressSnapshot, calculatedItems, pricing } =
+    const { addressSnapshot, billingAddressSnapshot, calculatedItems, pricing } =
       await this.orderPricingService.calculateQuoteAndValidate(
         userId,
         dto.items,
         dto.shippingAddressId,
+        dto.billingAddressId,
+        { ensureBillingAddress: true },
       );
 
     // Razorpay refuses larger orders; say so now instead of after the stock is held.
@@ -141,7 +143,11 @@ export class OrderService {
           grandTotal: pricing.grandTotal,
           currency: pricing.currency,
           shippingAddressId: dto.shippingAddressId,
-          shippingAddress: addressSnapshot,
+          shippingAddress: addressSnapshot as unknown as Prisma.InputJsonValue,
+          billingAddressId:
+            billingAddressSnapshot?.id ?? dto.billingAddressId ?? dto.shippingAddressId,
+          billingAddress: (billingAddressSnapshot ??
+            addressSnapshot) as unknown as Prisma.InputJsonValue,
           items: {
             create: calculatedItems.map((item) => ({
               productId: item.productId,
@@ -149,7 +155,9 @@ export class OrderService {
               name: item.name,
               sku: item.sku,
               quantity: item.quantity,
+              originalUnitPrice: item.originalUnitPrice ?? item.unitPrice,
               unitPrice: item.unitPrice,
+              discountAmount: item.discountAmount ?? 0,
               totalPrice: item.totalPrice,
               hsnCode: item.hsnCode,
               gstRate: item.gstRate,
@@ -262,7 +270,17 @@ export class OrderService {
       userId,
       dto.shippingAddressId,
     );
-    return candidates.find((order) => hasSameVariantQuantities(order.items, dto.items)) ?? null;
+    return (
+      candidates.find((order) => {
+        if (!hasSameVariantQuantities(order.items, dto.items)) {
+          return false;
+        }
+        if (dto.billingAddressId && order.billingAddressId !== dto.billingAddressId) {
+          return false;
+        }
+        return true;
+      }) ?? null
+    );
   }
 
   /** The order's open Razorpay attempt, or a new one when there is none to continue. */
@@ -484,13 +502,14 @@ export class OrderService {
         where: { id: orderId },
         data: { status: newStatus },
         include: {
-          items: true,
+          items: itemsWithImages,
           payments: true,
+          invoice: invoiceSummarySelect,
         },
       });
     });
 
-    return OrderMapper.toResponse(updated);
+    return OrderMapper.toResponse(updated, this.thumbnailUrl);
   }
 
   async cleanupExpiredOrders(batchSize = 500): Promise<OrderCleanupResponseDto> {

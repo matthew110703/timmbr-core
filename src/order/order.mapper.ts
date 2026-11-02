@@ -1,6 +1,7 @@
-import { Order, OrderItem, Payment } from '@prisma/client';
+import { InvoicePdfStatus, InvoiceStatus, Order, OrderItem, Payment } from '@prisma/client';
 import {
   AdminOrderListItemDto,
+  OrderInvoiceSummaryDto,
   OrderItemResponseDto,
   OrderResponseDto,
 } from './dto/order-response.dto';
@@ -11,9 +12,18 @@ type ImageRef = { images: { storageKey: string }[] } | null;
 /** Items may carry their variant / product primary image (see OrderRepository). */
 export type OrderItemWithImages = OrderItem & { variant?: ImageRef; product?: ImageRef };
 
+export type OrderInvoiceSummaryRecord = {
+  id: string;
+  invoiceNumber: string;
+  status: InvoiceStatus;
+  pdfStatus: InvoicePdfStatus;
+  issuedAt: Date;
+};
+
 export type OrderWithRelations = Order & {
   items: OrderItemWithImages[];
   payments?: Payment[];
+  invoice?: OrderInvoiceSummaryRecord | null;
 };
 
 /** Turns a storage key into a public URL (MediaService.getPublicUrl). */
@@ -35,7 +45,15 @@ export class OrderMapper {
       name: item.name,
       sku: item.sku,
       quantity: item.quantity,
+      ...(item.originalUnitPrice !== undefined &&
+        item.originalUnitPrice !== null && {
+          originalUnitPrice: Number(item.originalUnitPrice),
+        }),
       unitPrice: Number(item.unitPrice),
+      ...(item.discountAmount !== undefined &&
+        item.discountAmount !== null && {
+          discountAmount: Number(item.discountAmount),
+        }),
       totalPrice: Number(item.totalPrice),
       hsnCode: item.hsnCode ?? null,
       gstRate: Number(item.gstRate),
@@ -43,6 +61,19 @@ export class OrderMapper {
       metadata: item.metadata,
       thumbnail: storageKey && resolveThumbnail ? resolveThumbnail(storageKey) : null,
       createdAt: item.createdAt,
+    };
+  }
+
+  static toInvoiceSummary(
+    invoice?: OrderInvoiceSummaryRecord | null,
+  ): OrderInvoiceSummaryDto | null {
+    if (!invoice) return null;
+    return {
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      status: invoice.status,
+      pdfStatus: invoice.pdfStatus,
+      issuedAt: invoice.issuedAt,
     };
   }
 
@@ -63,12 +94,21 @@ export class OrderMapper {
       currency: order.currency,
       shippingAddressId: order.shippingAddressId ?? null,
       shippingAddress: order.shippingAddress,
+      ...(order.billingAddressId !== undefined && {
+        billingAddressId: order.billingAddressId ?? null,
+      }),
+      ...(order.billingAddress !== undefined && {
+        billingAddress: order.billingAddress,
+      }),
       placedAt: order.placedAt ?? null,
       expiresAt: order.expiresAt ?? null,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
       items: (order.items || []).map((item) => OrderMapper.toItemResponse(item, resolveThumbnail)),
       payments: order.payments?.map((payment) => PaymentMapper.toResponse(payment)),
+      ...(order.invoice !== undefined && {
+        invoice: OrderMapper.toInvoiceSummary(order.invoice),
+      }),
     };
   }
 

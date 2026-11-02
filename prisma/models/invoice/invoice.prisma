@@ -1,0 +1,96 @@
+enum InvoiceStatus {
+  ISSUED
+  VOID
+}
+
+enum InvoicePdfStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum TaxRegime {
+  INTRA_STATE
+  INTER_STATE
+}
+
+model Invoice {
+  id                   String             @id @default(uuid())
+  invoiceNumber        String             @unique @db.VarChar(16)
+  financialYear        String             @db.VarChar(5)
+  templateVersion      String             @default("v1")
+  orderId              String             @unique
+  userId               String
+
+  status               InvoiceStatus      @default(ISSUED)
+  pdfStatus            InvoicePdfStatus   @default(PENDING)
+  emailStatus          InvoiceEmailStatus @default(PENDING)
+  taxRegime            TaxRegime
+
+  // Seller GST & Place-of-supply snapshots
+  sellerGstin          String             @db.VarChar(15)
+  sellerState          String
+  sellerStateCode      String             @db.VarChar(2)
+  placeOfSupplyState   String
+  placeOfSupplyCode    String             @db.VarChar(2)
+
+  // Financial totals (all Prisma.Decimal)
+  currency             String             @default("INR")
+  subtotalGross        Decimal
+  productDiscountTotal Decimal            @default(0)
+  subtotalDiscounted   Decimal
+  subtotalTaxable      Decimal
+  shippingFee          Decimal            @default(0)
+  shippingTaxable      Decimal            @default(0)
+  shippingTax          Decimal            @default(0)
+  cgstTotal            Decimal            @default(0)
+  sgstTotal            Decimal            @default(0)
+  igstTotal            Decimal            @default(0)
+  taxTotal             Decimal            @default(0)
+  grandTotal           Decimal
+
+  // Immutable snapshots
+  customerCode         String
+  customerEmail        String
+  sellerSnapshot       Json
+  billingAddress       Json
+  shippingAddress      Json
+  paymentSnapshot      Json
+
+  // Issuance timestamp
+  issuedAt             DateTime           @default(now())
+
+  // PDF generation & private R2 storage metadata
+  storageKey           String?
+  pdfGenerationVersion Int                @default(1)
+  pdfGeneratedAt       DateTime?
+  pdfAttempts          Int                @default(0)
+  pdfLastError         String?
+
+  // Email delivery tracking summary
+  emailAttempts        Int                @default(0)
+  emailLastError       String?
+  emailLastAttemptAt   DateTime?
+  emailSentAt          DateTime?
+  emailLastRecipient   String?
+
+  // Void audit metadata
+  voidedAt             DateTime?
+  voidedById           String?
+  voidReason           String?
+
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  // Restrictive relations: issued invoices cannot be cascade-deleted
+  order                Order              @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  voidedBy             User?              @relation("VoidedInvoices", fields: [voidedById], references: [id], onDelete: Restrict)
+  items                InvoiceItem[]
+  emailDeliveries      InvoiceEmailDelivery[]
+
+  @@index([userId, issuedAt])
+  @@index([status, pdfStatus])
+  @@index([financialYear, issuedAt])
+}
+

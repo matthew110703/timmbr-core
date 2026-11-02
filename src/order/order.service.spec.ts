@@ -350,6 +350,20 @@ describe('OrderService', () => {
       expect(orderPricingService.calculateQuoteAndValidate).toHaveBeenCalled();
       expect(mockTx.order.create).toHaveBeenCalled();
     });
+
+    it('creates a new order when a different billingAddressId is requested', async () => {
+      orderRepository.findLivePendingOrders.mockResolvedValue([
+        { ...mockOrder, billingAddressId: 'addr-billing-old', payments: [pendingPayment] },
+      ]);
+
+      await service.createOrder('user-uuid-1', {
+        ...request,
+        billingAddressId: 'addr-billing-new',
+      });
+
+      expect(orderPricingService.calculateQuoteAndValidate).toHaveBeenCalled();
+      expect(mockTx.order.create).toHaveBeenCalled();
+    });
   });
 
   describe('getPaymentSession', () => {

@@ -4,7 +4,9 @@ export class QuoteItemDto {
   name!: string;
   sku!: string;
   quantity!: number;
+  originalUnitPrice?: number;
   unitPrice!: number;
+  discountAmount?: number;
   totalPrice!: number;
   hsnCode!: string | null;
   gstRate!: number;

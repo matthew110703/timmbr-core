@@ -12,6 +12,7 @@ import {
   OrderNotPayableException,
 } from '@/common/exceptions/order.exception';
 import { CartStatus, InventoryTransactionType, OrderStatus, PaymentStatus } from '@prisma/client';
+import { InvoiceIssuanceService } from '@/invoice/invoice-issuance.service';
 
 /** Statuses that mean the order was already placed (e.g. by the webhook), so a late verify is fine. */
 const PLACED_STATUSES: readonly OrderStatus[] = [
@@ -38,6 +39,7 @@ export class PaymentService {
     private readonly prisma: PrismaService,
     private readonly razorpayService: RazorpayService,
     private readonly paymentRepository: PaymentRepository,
+    private readonly invoiceIssuanceService: InvoiceIssuanceService,
   ) {}
 
   async verifyPayment(userId: string, dto: VerifyPaymentDto): Promise<VerifyPaymentResult> {
@@ -75,7 +77,7 @@ export class PaymentService {
       };
     }
 
-    // 3. Atomically update Payment, Order, and Inventory ledger
+    // 3. Atomically update Payment, Order, Inventory ledger, and issue GST Invoice + OutboxEvent
     const result = await this.prisma.$transaction(async (tx) => {
       // a. The money is in whatever happens to the order, so the payment is always recorded.
       const paidPayment = await tx.payment.update({
@@ -99,7 +101,12 @@ export class PaymentService {
           select: { status: true },
         });
         const status = current?.status ?? OrderStatus.CANCELLED;
-        return { payment: paidPayment, status, placed: PLACED_STATUSES.includes(status) };
+        return {
+          payment: paidPayment,
+          status,
+          placed: PLACED_STATUSES.includes(status),
+          confirmedNow: false,
+        };
       }
 
       const updatedOrder = await tx.order.findUniqueOrThrow({
@@ -150,8 +157,20 @@ export class PaymentService {
         });
       }
 
-      return { payment: paidPayment, status: OrderStatus.CONFIRMED, placed: true };
+      return {
+        payment: paidPayment,
+        status: OrderStatus.CONFIRMED,
+        placed: true,
+        confirmedNow: true,
+      };
     });
+
+    if (result.confirmedNow) {
+      await this.invoiceIssuanceService.issueForConfirmedOrderSafely({
+        orderId: result.payment.orderId,
+        payment: result.payment,
+      });
+    }
 
     if (!result.placed) {
       this.logger.error(

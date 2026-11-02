@@ -64,7 +64,7 @@ describe('AddressRepository', () => {
   });
 
   describe('findManyByUserId', () => {
-    it('delegates to prisma.address.findMany', async () => {
+    it('delegates to prisma.address.findMany without type filter when omitted', async () => {
       mockPrismaService.address.findMany.mockResolvedValue([mockAddress]);
 
       const result = await repository.findManyByUserId(USER_ID);
@@ -75,10 +75,22 @@ describe('AddressRepository', () => {
       });
       expect(result).toEqual([mockAddress]);
     });
+
+    it('filters by type when provided', async () => {
+      mockPrismaService.address.findMany.mockResolvedValue([mockAddress]);
+
+      const result = await repository.findManyByUserId(USER_ID, AddressType.BILLING);
+
+      expect(mockPrismaService.address.findMany).toHaveBeenCalledWith({
+        where: { userId: USER_ID, type: AddressType.BILLING },
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+      });
+      expect(result).toEqual([mockAddress]);
+    });
   });
 
   describe('countByUserId', () => {
-    it('delegates to prisma.address.count', async () => {
+    it('delegates to prisma.address.count without type when omitted', async () => {
       mockPrismaService.address.count.mockResolvedValue(1);
 
       const result = await repository.countByUserId(USER_ID);
@@ -87,6 +99,17 @@ describe('AddressRepository', () => {
         where: { userId: USER_ID },
       });
       expect(result).toBe(1);
+    });
+
+    it('delegates to prisma.address.count filtered by type when provided', async () => {
+      mockPrismaService.address.count.mockResolvedValue(2);
+
+      const result = await repository.countByUserId(USER_ID, AddressType.BILLING);
+
+      expect(mockPrismaService.address.count).toHaveBeenCalledWith({
+        where: { userId: USER_ID, type: AddressType.BILLING },
+      });
+      expect(result).toBe(2);
     });
   });
 
@@ -115,15 +138,19 @@ describe('AddressRepository', () => {
   });
 
   describe('createWithNewDefault', () => {
-    it('demotes existing default address and creates new address in transaction', async () => {
+    it('demotes existing default address of the same type and creates new address in transaction', async () => {
       mockPrismaService.address.updateMany.mockResolvedValue({ count: 1 });
       mockPrismaService.address.create.mockResolvedValue(mockAddress);
 
-      const result = await repository.createWithNewDefault(USER_ID, mockAddress);
+      const result = await repository.createWithNewDefault(
+        USER_ID,
+        mockAddress,
+        AddressType.SHIPPING,
+      );
 
       expect(mockPrismaService.$transaction).toHaveBeenCalled();
       expect(mockPrismaService.address.updateMany).toHaveBeenCalledWith({
-        where: { userId: USER_ID, isDefault: true },
+        where: { userId: USER_ID, type: AddressType.SHIPPING, isDefault: true },
         data: { isDefault: false },
       });
       expect(result).toBe(mockAddress);
@@ -145,13 +172,17 @@ describe('AddressRepository', () => {
   });
 
   describe('findOldestOtherAddress', () => {
-    it('delegates to prisma.address.findFirst with exclude option', async () => {
+    it('delegates to prisma.address.findFirst with exclude and type options', async () => {
       mockPrismaService.address.findFirst.mockResolvedValue(mockAddress);
 
-      const result = await repository.findOldestOtherAddress(USER_ID, ADDRESS_ID);
+      const result = await repository.findOldestOtherAddress(
+        USER_ID,
+        ADDRESS_ID,
+        AddressType.BILLING,
+      );
 
       expect(mockPrismaService.address.findFirst).toHaveBeenCalledWith({
-        where: { userId: USER_ID, id: { not: ADDRESS_ID } },
+        where: { userId: USER_ID, type: AddressType.BILLING, id: { not: ADDRESS_ID } },
         orderBy: { createdAt: 'asc' },
       });
       expect(result).toBe(mockAddress);
@@ -177,15 +208,15 @@ describe('AddressRepository', () => {
   });
 
   describe('setDefault', () => {
-    it('demotes all default addresses and sets target address as default in transaction', async () => {
+    it('demotes default addresses of the same type and sets target address as default in transaction', async () => {
       mockPrismaService.address.updateMany.mockResolvedValue({ count: 1 });
       mockPrismaService.address.update.mockResolvedValue(mockAddress);
 
-      const result = await repository.setDefault(USER_ID, ADDRESS_ID);
+      const result = await repository.setDefault(USER_ID, ADDRESS_ID, AddressType.BILLING);
 
       expect(mockPrismaService.$transaction).toHaveBeenCalled();
       expect(mockPrismaService.address.updateMany).toHaveBeenCalledWith({
-        where: { userId: USER_ID, isDefault: true },
+        where: { userId: USER_ID, type: AddressType.BILLING, isDefault: true },
         data: { isDefault: false },
       });
       expect(mockPrismaService.address.update).toHaveBeenCalledWith({

@@ -28,6 +28,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { PaymentModule } from './payment/payment.module';
 import { CartModule } from './cart/cart.module';
 import { OrderModule } from './order/order.module';
+import { InvoiceModule } from './invoice/invoice.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { PageModule } from './page/page.module';
 import { WishlistModule } from './wishlist/wishlist.module';
@@ -57,6 +58,7 @@ import { CatalogModule } from './catalog/catalog.module';
     PaymentModule,
     CartModule,
     OrderModule,
+    InvoiceModule,
     WebhookModule,
     PageModule,
     WishlistModule,

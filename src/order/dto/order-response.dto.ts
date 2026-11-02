@@ -1,5 +1,19 @@
-import { OrderStatus, PaymentProvider, PaymentStatus } from '@prisma/client';
+import {
+  InvoicePdfStatus,
+  InvoiceStatus,
+  OrderStatus,
+  PaymentProvider,
+  PaymentStatus,
+} from '@prisma/client';
 import { PaymentResponseDto } from '@/payment/dto/payment-response.dto';
+
+export class OrderInvoiceSummaryDto {
+  id!: string;
+  invoiceNumber!: string;
+  status!: InvoiceStatus;
+  pdfStatus!: InvoicePdfStatus;
+  issuedAt!: Date;
+}
 
 export class OrderItemResponseDto {
   id!: string;
@@ -9,7 +23,9 @@ export class OrderItemResponseDto {
   name!: string;
   sku!: string;
   quantity!: number;
+  originalUnitPrice?: number;
   unitPrice!: number;
+  discountAmount?: number;
   totalPrice!: number;
   hsnCode!: string | null;
   gstRate!: number;
@@ -33,12 +49,15 @@ export class OrderResponseDto {
   currency!: string;
   shippingAddressId!: string | null;
   shippingAddress!: any;
+  billingAddressId?: string | null;
+  billingAddress?: any;
   placedAt!: Date | null;
   expiresAt!: Date | null;
   createdAt!: Date;
   updatedAt!: Date;
   items!: OrderItemResponseDto[];
   payments?: PaymentResponseDto[];
+  invoice?: OrderInvoiceSummaryDto | null;
 }
 
 /** What a client needs to open the Razorpay checkout for an order. Amount is in rupees. */

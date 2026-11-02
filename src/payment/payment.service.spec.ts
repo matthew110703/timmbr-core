@@ -3,6 +3,7 @@ import { PaymentService } from './payment.service';
 import { PrismaService } from '@/prisma/prisma.service';
 import { RazorpayService } from './razorpay.service';
 import { PaymentRepository } from './payment.repository';
+import { InvoiceIssuanceService } from '@/invoice/invoice-issuance.service';
 import { PaymentNotFoundException } from '@/common/exceptions/payment.exception';
 import {
   OrderAccessForbiddenException,
@@ -14,6 +15,7 @@ describe('PaymentService', () => {
   let service: PaymentService;
   let paymentRepository: jest.Mocked<PaymentRepository>;
   let razorpayService: jest.Mocked<RazorpayService>;
+  let invoiceIssuanceService: jest.Mocked<InvoiceIssuanceService>;
 
   const mockPayment: any = {
     id: 'pay-uuid-1',
@@ -94,22 +96,35 @@ describe('PaymentService', () => {
       getKeyId: jest.fn().mockReturnValue('rzp_test_123'),
     };
 
+    const mockInvoiceIssuance = {
+      issueForConfirmedOrderInTx: jest.fn().mockResolvedValue({
+        id: 'inv-uuid-1',
+        invoiceNumber: 'INV/26-27/000001',
+      }),
+      issueForConfirmedOrderSafely: jest.fn().mockResolvedValue({
+        id: 'inv-uuid-1',
+        invoiceNumber: 'INV/26-27/000001',
+      }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: PaymentRepository, useValue: mockRepo },
         { provide: RazorpayService, useValue: mockRazorpay },
+        { provide: InvoiceIssuanceService, useValue: mockInvoiceIssuance },
       ],
     }).compile();
 
     service = module.get<PaymentService>(PaymentService);
     paymentRepository = module.get(PaymentRepository);
     razorpayService = module.get(RazorpayService);
+    invoiceIssuanceService = module.get(InvoiceIssuanceService);
   });
 
   describe('verifyPayment', () => {
-    it('verifies signature and transitions payment to PAID and order to CONFIRMED', async () => {
+    it('verifies signature and transitions payment to PAID, order to CONFIRMED, and issues invoice in tx', async () => {
       paymentRepository.findByProviderOrderId.mockResolvedValue(mockPayment);
 
       const result = await service.verifyPayment('user-uuid-1', dto);
@@ -123,6 +138,12 @@ describe('PaymentService', () => {
       );
       expect(tx.inventoryTransaction.create).toHaveBeenCalledTimes(1);
       expect(tx.cart.update).toHaveBeenCalledTimes(1);
+      expect(invoiceIssuanceService.issueForConfirmedOrderSafely).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderId: 'order-uuid-1',
+          payment: expect.objectContaining({ status: PaymentStatus.PAID }),
+        }),
+      );
     });
 
     it('throws PaymentNotFoundException when provider order id is not found', async () => {
@@ -157,6 +178,7 @@ describe('PaymentService', () => {
 
       expect(result.orderStatus).toBe(OrderStatus.CONFIRMED);
       expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      expect(invoiceIssuanceService.issueForConfirmedOrderSafely).not.toHaveBeenCalled();
     });
 
     it('a replayed verify for a payment whose order was cancelled does not say success', async () => {
@@ -175,7 +197,7 @@ describe('PaymentService', () => {
       );
     });
 
-    it('does not take the stock out twice when the webhook confirmed the order first', async () => {
+    it('does not take the stock out twice or issue a second invoice when the webhook confirmed the order first', async () => {
       paymentRepository.findByProviderOrderId.mockResolvedValue(mockPayment);
       tx.order.updateMany.mockResolvedValue({ count: 0 });
       tx.order.findUnique.mockResolvedValue({ status: OrderStatus.CONFIRMED });
@@ -185,9 +207,10 @@ describe('PaymentService', () => {
       expect(result.orderStatus).toBe(OrderStatus.CONFIRMED);
       expect(tx.inventory.update).not.toHaveBeenCalled();
       expect(tx.inventoryTransaction.create).not.toHaveBeenCalled();
+      expect(invoiceIssuanceService.issueForConfirmedOrderSafely).not.toHaveBeenCalled();
     });
 
-    it('records the payment but reports ORDER_NOT_PAYABLE when the order already expired', async () => {
+    it('records the payment but reports ORDER_NOT_PAYABLE and does not issue invoice when the order already expired', async () => {
       paymentRepository.findByProviderOrderId.mockResolvedValue(mockPayment);
       tx.order.updateMany.mockResolvedValue({ count: 0 });
       tx.order.findUnique.mockResolvedValue({ status: OrderStatus.CANCELLED });
@@ -197,6 +220,7 @@ describe('PaymentService', () => {
       );
       expect(tx.payment.update).toHaveBeenCalled();
       expect(tx.inventory.update).not.toHaveBeenCalled();
+      expect(invoiceIssuanceService.issueForConfirmedOrderSafely).not.toHaveBeenCalled();
     });
   });
 

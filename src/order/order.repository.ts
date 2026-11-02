@@ -5,12 +5,22 @@ import { OrderWithRelations } from './order.mapper';
 
 /** Items with their variant / product primary image, for thumbnails. */
 const primaryImage = { where: { isPrimary: true }, take: 1, select: { storageKey: true } } as const;
-const itemsWithImages = {
+export const itemsWithImages = {
   include: {
     variant: { select: { images: primaryImage } },
     product: { select: { images: primaryImage } },
   },
 } satisfies Prisma.Order$itemsArgs;
+
+export const invoiceSummarySelect = {
+  select: {
+    id: true,
+    invoiceNumber: true,
+    status: true,
+    pdfStatus: true,
+    issuedAt: true,
+  },
+} satisfies Prisma.Order$invoiceArgs;
 
 @Injectable()
 export class OrderRepository {
@@ -34,6 +44,7 @@ export class OrderRepository {
         payments: {
           orderBy: { createdAt: 'desc' },
         },
+        invoice: invoiceSummarySelect,
       },
     });
   }
@@ -78,6 +89,7 @@ export class OrderRepository {
           payments: {
             orderBy: { createdAt: 'desc' },
           },
+          invoice: invoiceSummarySelect,
         },
         skip: (page - 1) * limit,
         take: limit,
@@ -121,7 +133,7 @@ export class OrderRepository {
         take: limit,
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.order.count({ where }),
+      this.prisma.order.count({ where: where }),
     ]);
   }
 
@@ -132,6 +144,7 @@ export class OrderRepository {
       include: {
         items: true,
         payments: true,
+        invoice: invoiceSummarySelect,
       },
     });
   }

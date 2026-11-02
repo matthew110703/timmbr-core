@@ -81,7 +81,7 @@ export class UpdateAddressDto {
   @IsOptional()
   longitude?: number | null;
 
-  @IsEnum(AddressType, { message: 'Type must be SHIPPING, BILLING, or BOTH' })
+  @IsEnum(AddressType, { message: 'Type must be SHIPPING or BILLING' })
   @IsOptional()
   type?: AddressType;
 

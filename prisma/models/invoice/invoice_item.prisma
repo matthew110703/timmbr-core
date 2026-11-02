@@ -1,0 +1,40 @@
+model InvoiceItem {
+  id                   String   @id @default(uuid())
+  invoiceId            String
+  orderItemId          String?
+  productId            String?
+  variantId            String?
+
+  // Product snapshots
+  title                String
+  sku                  String
+  hsnCode              String?
+  quantity             Int
+
+  // Monetary snapshots (all Prisma.Decimal)
+  originalUnitPrice    Decimal
+  unitPrice            Decimal
+  grossAmount          Decimal
+  productDiscount      Decimal  @default(0)
+  finalInclusiveAmount Decimal
+  taxableAmount        Decimal
+
+  // Tax breakdown snapshots
+  gstRate              Decimal
+  cgstRate             Decimal  @default(0)
+  cgstAmount           Decimal  @default(0)
+  sgstRate             Decimal  @default(0)
+  sgstAmount           Decimal  @default(0)
+  igstRate             Decimal  @default(0)
+  igstAmount           Decimal  @default(0)
+  totalTax             Decimal
+  lineTotal            Decimal
+
+  createdAt            DateTime @default(now())
+
+  // Restrictive relation: invoice items cannot be cascade-deleted
+  invoice              Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@index([invoiceId])
+}
+

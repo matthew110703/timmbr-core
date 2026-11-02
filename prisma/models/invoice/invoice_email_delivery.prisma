@@ -1,0 +1,25 @@
+enum InvoiceEmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model InvoiceEmailDelivery {
+  id            String             @id @default(uuid())
+  invoiceId     String
+  recipient     String
+  isOverride    Boolean            @default(false)
+  requestedById String?
+  status        InvoiceEmailStatus @default(PENDING)
+  attempts      Int                @default(0)
+  lastError     String?
+  lastAttemptAt DateTime?
+  sentAt        DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  invoice       Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@index([invoiceId, createdAt])
+}
+

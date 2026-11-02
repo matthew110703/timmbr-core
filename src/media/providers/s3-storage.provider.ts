@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -8,8 +9,11 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '@/config/env';
 import {
+  PresignedDownloadOptions,
+  PresignedDownloadResult,
   PresignedUploadOptions,
   PresignedUploadResult,
+  PutBufferOptions,
   StorageProvider,
 } from '../interfaces/storage-provider.interface';
 import {
@@ -69,6 +73,104 @@ export class S3StorageProvider implements StorageProvider {
     } catch (error) {
       this.logger.error(`Failed to generate presigned upload URL for key: ${options.key}`, error);
       throw new MediaStorageException('Failed to generate presigned upload URL.');
+    }
+  }
+
+  async getPresignedDownloadUrl(
+    options: PresignedDownloadOptions,
+  ): Promise<PresignedDownloadResult> {
+    if (!this.bucket) {
+      throw new MediaMissingConfigException('STORAGE_BUCKET is not configured.');
+    }
+
+    if (!options.key) {
+      throw new MediaStorageException(
+        'Storage key is required for presigned download URL generation.',
+      );
+    }
+
+    const expiresIn =
+      options.expiresInSeconds ?? MEDIA_CONSTANTS.DEFAULT_PRESIGNED_EXPIRATION_SECONDS;
+
+    const safeFileName = options.downloadFileName
+      ? options.downloadFileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+      : undefined;
+
+    try {
+      const command = new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: options.key,
+        ...(safeFileName && {
+          ResponseContentDisposition: `attachment; filename="${safeFileName}"`,
+        }),
+        ...(options.responseContentType && {
+          ResponseContentType: options.responseContentType,
+        }),
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+      const downloadUrl = await getSignedUrl(this.client as any, command, { expiresIn });
+
+      return {
+        downloadUrl,
+        key: options.key,
+        expiresIn,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to generate presigned download URL for key: ${options.key}`, error);
+      throw new MediaStorageException('Failed to generate presigned download URL.');
+    }
+  }
+
+  async putBuffer(options: PutBufferOptions): Promise<void> {
+    if (!this.bucket) {
+      throw new MediaMissingConfigException('STORAGE_BUCKET is not configured.');
+    }
+
+    if (!options.key) {
+      throw new MediaStorageException('Storage key is required for buffer upload.');
+    }
+
+    try {
+      const command = new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: options.key,
+        Body: options.body,
+        ContentType: options.contentType,
+      });
+
+      await this.client.send(command);
+    } catch (error) {
+      this.logger.error(`Failed to upload buffer to storage for key: ${options.key}`, error);
+      throw new MediaStorageException('Failed to upload file to storage.');
+    }
+  }
+
+  async getBuffer(key: string): Promise<Buffer> {
+    if (!this.bucket) {
+      throw new MediaMissingConfigException('STORAGE_BUCKET is not configured.');
+    }
+
+    if (!key) {
+      throw new MediaStorageException('Storage key is required for object download.');
+    }
+
+    try {
+      const command = new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      });
+
+      const response = await this.client.send(command);
+      if (!response.Body) {
+        throw new Error('Empty response body from storage');
+      }
+
+      const bytes = await response.Body.transformToByteArray();
+      return Buffer.from(bytes);
+    } catch (error) {
+      this.logger.error(`Failed to download object from storage for key: ${key}`, error);
+      throw new MediaStorageException('Failed to download file from storage.');
     }
   }
 

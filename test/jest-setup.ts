@@ -1,3 +1,4 @@
+process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/testdb';
 process.env.JWT_ACCESS_SECRET = 'test-access-secret';
 process.env.JWT_REFRESH_SECRET = 'test-refresh-secret';
@@ -11,3 +12,11 @@ process.env.GOOGLE_CALLBACK_URL = 'http://localhost:3000/api/v1/auth/google/call
 process.env.CORE_INTERNAL_KEY = 'test-internal-key-0123456789abcdef0123';
 process.env.STOREFRONT_ORIGIN = 'http://localhost:3000';
 process.env.ADMIN_CONSOLE_ORIGIN = 'http://localhost:5000';
+process.env.INVOICE_SELLER_NAME = 'Timmbr Test Seller Pvt Ltd';
+process.env.INVOICE_SELLER_GSTIN = '29AABCT1234F1Z5';
+process.env.INVOICE_SELLER_ADDRESS =
+  '100 Test Industrial Area, Phase 2, Bengaluru, Karnataka - 560001';
+process.env.INVOICE_SELLER_PHONE = '+91 8000000000';
+process.env.INVOICE_SELLER_EMAIL = 'billing@example.com';
+process.env.INVOICE_REQUIRE_HSN = 'false';
+process.env.INVOICE_WORKER_IN_API = 'false';

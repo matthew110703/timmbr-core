@@ -4,6 +4,7 @@ import {
   IsArray,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsUUID,
   Min,
   ValidateNested,
@@ -29,4 +30,8 @@ export class CreateOrderDto {
   @IsUUID()
   @IsNotEmpty()
   shippingAddressId!: string;
+
+  @IsUUID()
+  @IsOptional()
+  billingAddressId?: string;
 }
