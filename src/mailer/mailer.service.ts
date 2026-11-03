@@ -1,5 +1,7 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { Resend } from 'resend';
+import * as nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 import { env } from '@/config/env';
 import { OTP_TTL_S } from '@/auth/auth.constants';
 import { resetPasswordEmailTemplate } from './templates/reset-password-email.template';
@@ -16,50 +18,109 @@ export interface SendInvoiceEmailOptions extends InvoiceEmailTemplateParams {
   attachmentFileName?: string;
 }
 
+interface InternalSendMailOptions {
+  to: string;
+  subject: string;
+  html: string;
+  attachments?: Array<{
+    filename: string;
+    content: Buffer;
+  }>;
+}
+
 @Injectable()
 export class MailerService {
-  private readonly resend: Resend;
+  private readonly logger = new Logger(MailerService.name);
+  private readonly resend: Resend | null = null;
+  private readonly transporter: Transporter | null = null;
 
   constructor() {
-    this.resend = new Resend(env.RESEND_API_KEY);
+    if (env.MAIL_TRANSPORT === 'smtp') {
+      this.transporter = nodemailer.createTransport({
+        host: env.SMTP_HOST,
+        port: env.SMTP_PORT,
+        secure: env.SMTP_SECURE,
+        auth:
+          env.SMTP_USER && env.SMTP_PASS ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : undefined,
+      });
+      this.logger.log(
+        `Initialized MailerService with SMTP transport (${env.SMTP_HOST}:${env.SMTP_PORT})`,
+      );
+    } else {
+      this.resend = new Resend(env.RESEND_API_KEY);
+      this.logger.log('Initialized MailerService with Resend transport');
+    }
+  }
+
+  private async dispatchEmail(options: InternalSendMailOptions): Promise<void> {
+    if (env.MAIL_TRANSPORT === 'smtp' && this.transporter) {
+      try {
+        await this.transporter.sendMail({
+          from: env.MAIL_FROM,
+          to: options.to,
+          subject: options.subject,
+          html: options.html,
+          attachments: options.attachments,
+        });
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          { err: msg, to: options.to, subject: options.subject },
+          'Failed to deliver email via SMTP',
+        );
+        throw new InternalServerErrorException(`Failed to send email via SMTP: ${msg}`);
+      }
+      return;
+    }
+
+    if (this.resend) {
+      const { error } = await this.resend.emails.send({
+        from: env.MAIL_FROM,
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+        attachments: options.attachments,
+      });
+
+      if (error) {
+        const msg = error.message || 'Unknown Resend error';
+        this.logger.error(
+          { err: msg, to: options.to, subject: options.subject },
+          'Failed to deliver email via Resend',
+        );
+        throw new InternalServerErrorException(`Failed to send email: ${msg}`);
+      }
+      return;
+    }
+
+    throw new InternalServerErrorException('No email transport configured');
   }
 
   async sendOtpEmail(to: string, name: string | null, otpCode: string): Promise<void> {
     const firstName = name ? name.split(' ')[0] : null;
 
-    const { error } = await this.resend.emails.send({
-      from: env.MAIL_FROM,
+    await this.dispatchEmail({
       to,
       subject: `${otpCode} is your Timmbr verification code`,
       html: otpEmailTemplate(firstName, otpCode, Math.floor(OTP_TTL_S / 60)),
     });
-
-    if (error) {
-      throw new InternalServerErrorException('Failed to send verification OTP email.');
-    }
   }
 
   async sendPasswordResetEmail(to: string, name: string, resetUrl: string): Promise<void> {
     const firstName = name.split(' ')[0];
 
-    const { error } = await this.resend.emails.send({
-      from: env.MAIL_FROM,
+    await this.dispatchEmail({
       to,
       subject: 'Reset your Timmbr password',
       html: resetPasswordEmailTemplate(firstName, resetUrl),
     });
-
-    if (error) {
-      throw new InternalServerErrorException('Failed to send password reset email.');
-    }
   }
 
   async sendInvoiceEmail(options: SendInvoiceEmailOptions): Promise<void> {
     const safeFileName =
       options.attachmentFileName ?? sanitizeInvoicePdfFileName(options.invoiceNumber);
 
-    const { error } = await this.resend.emails.send({
-      from: env.MAIL_FROM,
+    await this.dispatchEmail({
       to: options.to,
       subject: `Your Timmbr Tax Invoice (${options.invoiceNumber})`,
       html: invoiceEmailTemplate({
@@ -75,11 +136,5 @@ export class MailerService {
         },
       ],
     });
-
-    if (error) {
-      throw new InternalServerErrorException(
-        `Failed to send invoice email: ${error.message || 'Unknown email provider error'}`,
-      );
-    }
   }
 }

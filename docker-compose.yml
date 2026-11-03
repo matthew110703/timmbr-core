@@ -1,0 +1,107 @@
+# Local development infrastructure for timmbr-core.
+#
+# Start infrastructure (PostgreSQL, Redis, Mailpit):
+#   pnpm infra:up     (or docker compose up -d)
+#
+# Start infrastructure + Redis Insight dashboard:
+#   pnpm infra:tools  (or docker compose --profile tools up -d)
+#
+# View status:
+#   pnpm infra:status (or docker compose ps)
+#
+# View logs:
+#   pnpm infra:logs   (or docker compose logs -f)
+#
+# PostgreSQL (host connection):
+#   host: localhost
+#   port: 5432
+#   user: timmbr
+#   password: timmbr
+#   database: timmbr_dev
+#
+# Redis (host connection):
+#   host: localhost
+#   port: 6379
+#
+# Mailpit (local email testing):
+#   SMTP: localhost:1025
+#   Web UI: http://localhost:8025
+#
+# Redis Insight dashboard:
+#   http://localhost:5540
+#
+# Stop services (including optional tools like Redis Insight):
+#   pnpm infra:down   (or docker compose --profile "*" down)
+#
+# Stop and delete stored volume data:
+#   docker compose --profile "*" down -v
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: timmbr-postgres
+    environment:
+      POSTGRES_USER: timmbr
+      POSTGRES_PASSWORD: timmbr
+      POSTGRES_DB: timmbr_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - timmbr_postgres_data_v18:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U timmbr -d timmbr_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    container_name: timmbr-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - timmbr_redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: timmbr-mailpit
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    environment:
+      MP_MAX_MESSAGES: 500
+    restart: unless-stopped
+
+  redis-insight:
+    image: redis/redisinsight:latest
+    container_name: timmbr-redis-insight
+    profiles:
+      - tools
+    ports:
+      - "127.0.0.1:5540:5540"
+    volumes:
+      - timmbr_redis_insight_data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  timmbr_postgres_data_v18:
+    driver: local
+
+  timmbr_redis_data:
+    driver: local
+
+  timmbr_redis_insight_data:
+    driver: local
+

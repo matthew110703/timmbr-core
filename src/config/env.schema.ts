@@ -37,7 +37,16 @@ export const envSchema = z
       .default('7d'),
     COOKIE_SECRET: z.string(),
     REDIS_URL: z.string(),
-    RESEND_API_KEY: z.string(),
+
+    // Email transport configuration: 'smtp' (e.g. Mailpit in dev) or 'resend' (prod)
+    MAIL_TRANSPORT: z.enum(['smtp', 'resend']).default('smtp'),
+    SMTP_HOST: z.string().default('localhost'),
+    SMTP_PORT: z.coerce.number().default(1025),
+    SMTP_SECURE: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(false),
+    SMTP_USER: z.string().optional(),
+    SMTP_PASS: z.string().optional(),
+
+    RESEND_API_KEY: z.string().optional(),
     MAIL_FROM: z.string(),
     GOOGLE_CLIENT_ID: z.string(),
     GOOGLE_CLIENT_SECRET: z.string(),
@@ -88,6 +97,16 @@ export const envSchema = z
     INVOICE_DOWNLOAD_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   })
   .superRefine((data, ctx) => {
+    if (data.MAIL_TRANSPORT === 'resend' || data.NODE_ENV === 'prod') {
+      if (!data.RESEND_API_KEY || data.RESEND_API_KEY.trim() === '') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['RESEND_API_KEY'],
+          message: 'RESEND_API_KEY is required when MAIL_TRANSPORT is "resend" or in production.',
+        });
+      }
+    }
+
     if (data.NODE_ENV === 'prod') {
       for (const field of REQUIRED_PROD_SELLER_FIELDS) {
         if (!data[field] || String(data[field]).trim() === '') {
