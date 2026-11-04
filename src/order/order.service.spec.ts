@@ -586,6 +586,31 @@ describe('OrderService', () => {
     });
   });
 
+  describe('order item product slug', () => {
+    const itemWithProduct = (product: { slug: string; images: [] } | null) => ({
+      ...mockOrder,
+      items: [{ ...mockOrder.items[0], product }],
+    });
+
+    it('returns the live product slug', async () => {
+      orderRepository.findById.mockResolvedValue(
+        itemWithProduct({ slug: 'oak-chair', images: [] }),
+      );
+
+      const result = await service.getUserOrderById('user-uuid-1', 'order-uuid-1');
+
+      expect(result.items[0].productSlug).toBe('oak-chair');
+    });
+
+    it('returns null when the product row is gone', async () => {
+      orderRepository.findById.mockResolvedValue(itemWithProduct(null));
+
+      const result = await service.getUserOrderById('user-uuid-1', 'order-uuid-1');
+
+      expect(result.items[0].productSlug).toBeNull();
+    });
+  });
+
   describe('updateOrderStatus', () => {
     it('allows valid state transition (e.g. PENDING -> CONFIRMED)', async () => {
       orderRepository.findById.mockResolvedValue(mockOrder);

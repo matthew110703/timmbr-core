@@ -33,6 +33,8 @@ export class OrderItemResponseDto {
   metadata!: any;
   /** Variant (else product) primary image; null if none or the product is gone. */
   thumbnail!: string | null;
+  /** Live Product.slug. Null when the product row is gone. Not snapshotted. */
+  productSlug!: string | null;
   createdAt!: Date;
 }
 

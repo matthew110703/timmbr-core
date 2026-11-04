@@ -10,7 +10,10 @@ import { PaymentMapper } from '@/payment/payment.mapper';
 type ImageRef = { images: { storageKey: string }[] } | null;
 
 /** Items may carry their variant / product primary image (see OrderRepository). */
-export type OrderItemWithImages = OrderItem & { variant?: ImageRef; product?: ImageRef };
+export type OrderItemWithImages = OrderItem & {
+  variant?: ImageRef;
+  product?: { slug: string; images: { storageKey: string }[] } | null;
+};
 
 export type OrderInvoiceSummaryRecord = {
   id: string;
@@ -60,6 +63,7 @@ export class OrderMapper {
       taxAmount: Number(item.taxAmount),
       metadata: item.metadata,
       thumbnail: storageKey && resolveThumbnail ? resolveThumbnail(storageKey) : null,
+      productSlug: item.product?.slug ?? null,
       createdAt: item.createdAt,
     };
   }

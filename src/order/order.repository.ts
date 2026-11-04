@@ -8,7 +8,7 @@ const primaryImage = { where: { isPrimary: true }, take: 1, select: { storageKey
 export const itemsWithImages = {
   include: {
     variant: { select: { images: primaryImage } },
-    product: { select: { images: primaryImage } },
+    product: { select: { slug: true, images: primaryImage } },
   },
 } satisfies Prisma.Order$itemsArgs;
 
@@ -30,7 +30,7 @@ export class OrderRepository {
     return this.prisma.order.create({
       data,
       include: {
-        items: true,
+        items: itemsWithImages,
         payments: true,
       },
     });
@@ -62,7 +62,7 @@ export class OrderRepository {
         expiresAt: { gt: new Date() },
       },
       include: {
-        items: true,
+        items: itemsWithImages,
         payments: { orderBy: { createdAt: 'desc' } },
       },
       orderBy: { createdAt: 'desc' },
@@ -142,7 +142,7 @@ export class OrderRepository {
       where: { id },
       data,
       include: {
-        items: true,
+        items: itemsWithImages,
         payments: true,
         invoice: invoiceSummarySelect,
       },
