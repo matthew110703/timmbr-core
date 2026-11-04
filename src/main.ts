@@ -108,10 +108,20 @@ async function bootstrap() {
       transform: true,
       transformOptions: { enableImplicitConversion: true },
       exceptionFactory: (validationErrors) => {
-        const errors = validationErrors.map((e) => ({
-          field: e.property,
-          errors: Object.values(e.constraints ?? {}),
-        }));
+        const formatErrors = (
+          errs: typeof validationErrors,
+          parentPath = '',
+        ): { field: string; errors: string[] }[] => {
+          return errs.flatMap((e) => {
+            const currentPath = parentPath ? `${parentPath}.${e.property}` : e.property;
+            const current = e.constraints
+              ? [{ field: currentPath, errors: Object.values(e.constraints) }]
+              : [];
+            const children = e.children?.length ? formatErrors(e.children, currentPath) : [];
+            return [...current, ...children];
+          });
+        };
+        const errors = formatErrors(validationErrors);
         return new BadRequestException({ message: 'Validation failed', errors });
       },
     }),
