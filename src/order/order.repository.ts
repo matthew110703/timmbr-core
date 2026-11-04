@@ -8,7 +8,7 @@ const primaryImage = { where: { isPrimary: true }, take: 1, select: { storageKey
 export const itemsWithImages = {
   include: {
     variant: { select: { images: primaryImage } },
-    product: { select: { images: primaryImage } },
+    product: { select: { slug: true, images: primaryImage } },
   },
 } satisfies Prisma.Order$itemsArgs;
 
