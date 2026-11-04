@@ -166,7 +166,7 @@ export class OrderService {
           },
         },
         include: {
-          items: true,
+          items: itemsWithImages,
           payments: true,
         },
       });

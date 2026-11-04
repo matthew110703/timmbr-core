@@ -12,7 +12,6 @@ type ImageRef = { images: { storageKey: string }[] } | null;
 /** Items may carry their variant / product primary image (see OrderRepository). */
 export type OrderItemWithImages = OrderItem & {
   variant?: ImageRef;
-  /** Slug is selected only on product. Absent on create/pending queries that do not include it. */
   product?: { slug: string; images: { storageKey: string }[] } | null;
 };
 

@@ -30,7 +30,7 @@ export class OrderRepository {
     return this.prisma.order.create({
       data,
       include: {
-        items: true,
+        items: itemsWithImages,
         payments: true,
       },
     });
@@ -62,7 +62,7 @@ export class OrderRepository {
         expiresAt: { gt: new Date() },
       },
       include: {
-        items: true,
+        items: itemsWithImages,
         payments: { orderBy: { createdAt: 'desc' } },
       },
       orderBy: { createdAt: 'desc' },
@@ -142,7 +142,7 @@ export class OrderRepository {
       where: { id },
       data,
       include: {
-        items: true,
+        items: itemsWithImages,
         payments: true,
         invoice: invoiceSummarySelect,
       },
