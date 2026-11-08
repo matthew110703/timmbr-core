@@ -8,13 +8,22 @@ import { RazorpayService } from '@/payment/razorpay.service';
 import { PaymentRepository } from '@/payment/payment.repository';
 import {
   OrderAccessForbiddenException,
+  OrderCancellationRestrictedException,
   OrderIllegalStateTransitionException,
   OrderNotFoundException,
   OrderNotPayableException,
 } from '@/common/exceptions/order.exception';
 import { PaymentAmountTooHighException } from '@/common/exceptions/payment.exception';
-import { OrderStatus, PaymentProvider, PaymentStatus } from '@prisma/client';
+import {
+  InvoiceEmailStatus,
+  OrderStatus,
+  PaymentProvider,
+  PaymentStatus,
+  UserRole,
+} from '@prisma/client';
 import { CartRepository } from '@/cart/cart.repository';
+import { OrderNotificationService } from './queue/order-notification.service';
+import { ForbiddenException } from '@nestjs/common';
 
 const mockMedia = { getPublicUrl: jest.fn((key: string) => `https://cdn.test/${key}`) };
 
@@ -77,9 +86,33 @@ describe('OrderService', () => {
         updateMany: jest.fn().mockResolvedValue({}),
       },
       order: {
+        findUnique: jest.fn(),
         create: jest.fn().mockResolvedValue(mockOrder),
         update: jest.fn().mockResolvedValue({ ...mockOrder, status: OrderStatus.CONFIRMED }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      orderActivity: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockImplementation(({ data }) => {
+          const { notification, ...rest } = data;
+          return Promise.resolve({
+            id: 'act-uuid-1',
+            createdAt: new Date(),
+            staff: null,
+            ...rest,
+            notification: notification?.create
+              ? {
+                  id: 'notif-uuid-1',
+                  ...notification.create,
+                  attempts: 0,
+                  sentAt: null,
+                  lastError: null,
+                  createdAt: new Date(),
+                }
+              : null,
+          });
+        }),
       },
       payment: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -88,6 +121,9 @@ describe('OrderService', () => {
 
     const mockPrisma = {
       $transaction: jest.fn((cb) => cb(mockTx)),
+      order: {
+        findUnique: jest.fn(),
+      },
     };
 
     const mockOrderRepo = {
@@ -95,6 +131,8 @@ describe('OrderService', () => {
       findById: jest.fn(),
       findUserOrders: jest.fn(),
       findAdminOrders: jest.fn(),
+      getDashboardStats: jest.fn(),
+      findOrderActivities: jest.fn().mockResolvedValue([]),
       update: jest.fn(),
       findExpiredPendingOrders: jest.fn(),
       findLivePendingOrders: jest.fn().mockResolvedValue([]),
@@ -159,6 +197,10 @@ describe('OrderService', () => {
       findActiveCartByUserId: jest.fn().mockResolvedValue(null),
     };
 
+    const mockNotificationService = {
+      enqueueDeliveryJob: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrderService,
@@ -169,6 +211,7 @@ describe('OrderService', () => {
         { provide: PaymentRepository, useValue: mockPaymentRepo },
         { provide: CartRepository, useValue: mockCartRepo },
         { provide: MediaService, useValue: mockMedia },
+        { provide: OrderNotificationService, useValue: mockNotificationService },
       ],
     }).compile();
 
@@ -658,8 +701,12 @@ describe('OrderService', () => {
       expect(result.data).toHaveLength(1);
       expect(result.data[0]).toEqual({
         id: 'order-uuid-1',
+        orderNumber: '#TMB-ORDERUUI',
         status: OrderStatus.CONFIRMED,
         paymentStatus: PaymentStatus.PAID,
+        paymentMethod: null,
+        thumbnail: null,
+        acknowledgedAt: null,
         grandTotal: 1000,
         currency: 'INR',
         itemsCount: 3,
@@ -674,6 +721,178 @@ describe('OrderService', () => {
         createdAt: expect.any(Date),
       });
       expect(result.meta.total).toBe(1);
+    });
+
+    it('enforces paidOnly and excludes PENDING orders when requested for staff', async () => {
+      orderRepository.findAdminOrders.mockResolvedValue([[], 0]);
+
+      await service.getAdminOrders({ page: 1, limit: 20 }, { enforcePaidOnly: true });
+
+      expect(orderRepository.findAdminOrders).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: { not: OrderStatus.PENDING },
+          payments: { some: { status: PaymentStatus.PAID } },
+        }),
+        1,
+        20,
+      );
+    });
+  });
+
+  describe('staff companion operations', () => {
+    it('acknowledges a CONFIRMED order idempotently', async () => {
+      mockTx.order.findUnique.mockResolvedValueOnce({
+        ...mockOrder,
+        status: OrderStatus.CONFIRMED,
+        acknowledgedAt: null,
+      });
+      const ackDate = new Date();
+      mockTx.order.update.mockResolvedValueOnce({
+        ...mockOrder,
+        status: OrderStatus.CONFIRMED,
+        acknowledgedAt: ackDate,
+        acknowledgedById: 'staff-1',
+      });
+
+      const first = await service.acknowledgeOrder('order-uuid-1', 'staff-1');
+      expect(first.acknowledgedAt).toEqual(ackDate);
+      expect(mockTx.orderActivity.create).toHaveBeenCalledTimes(1);
+
+      mockTx.order.findUnique.mockResolvedValueOnce({
+        ...mockOrder,
+        status: OrderStatus.CONFIRMED,
+        acknowledgedAt: ackDate,
+        acknowledgedById: 'staff-1',
+      });
+
+      const second = await service.acknowledgeOrder('order-uuid-1', 'staff-1');
+      expect(second.acknowledgedAt).toEqual(ackDate);
+      expect(mockTx.orderActivity.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('requires orders:deliver permission when a STAFF user marks an order DELIVERED', async () => {
+      orderRepository.findById.mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.SHIPPED,
+      });
+
+      await expect(
+        service.updateOrderStatus('order-uuid-1', OrderStatus.DELIVERED, {
+          userId: 'staff-1',
+          role: UserRole.STAFF,
+          permissions: ['orders:update'],
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('records MANUFACTURING_STARTED idempotently on a PROCESSING order', async () => {
+      mockTx.order.findUnique.mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.PROCESSING,
+      });
+
+      const created = await service.recordOrderActivity('order-uuid-1', 'staff-1', {
+        eventType: 'MANUFACTURING_STARTED',
+      });
+      expect(created.eventType).toBe('MANUFACTURING_STARTED');
+      expect(mockTx.orderActivity.create).toHaveBeenCalledTimes(1);
+
+      mockTx.orderActivity.findFirst.mockResolvedValueOnce({
+        id: created.id,
+        orderId: 'order-uuid-1',
+        staffId: 'staff-1',
+        eventType: 'MANUFACTURING_STARTED',
+        description: 'Manufacturing has started on the order.',
+        isCustomerVisible: false,
+        createdAt: new Date(),
+      });
+
+      const duplicate = await service.recordOrderActivity('order-uuid-1', 'staff-1', {
+        eventType: 'MANUFACTURING_STARTED',
+      });
+      expect(duplicate.id).toBe(created.id);
+      expect(mockTx.orderActivity.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('cancels directly before MANUFACTURING_STARTED without touching inventory', async () => {
+      mockTx.order.findUnique.mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.PROCESSING,
+        user: { id: 'u1', name: 'Customer', email: 'c@example.com', phone: null },
+      });
+      mockTx.orderActivity.findFirst.mockResolvedValue(null);
+      mockTx.order.update.mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.CANCELLED,
+      });
+
+      const res = await service.cancelOrder(
+        'order-uuid-1',
+        { userId: 'staff-1', role: UserRole.STAFF },
+        { reason: 'Customer changed fabric before cutting' },
+      );
+
+      expect(res.cancellationState).toBe('CANCELLED');
+      expect(res.order.status).toBe(OrderStatus.CANCELLED);
+      expect(mockTx.inventory.update).not.toHaveBeenCalled();
+    });
+
+    it('blocks direct cancellation after MANUFACTURING_STARTED unless requestApproval is set', async () => {
+      mockTx.order.findUnique.mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.PROCESSING,
+      });
+      mockTx.orderActivity.findFirst.mockResolvedValueOnce({
+        id: 'mfg-1',
+        eventType: 'MANUFACTURING_STARTED',
+      });
+
+      await expect(
+        service.cancelOrder(
+          'order-uuid-1',
+          { userId: 'staff-1', role: UserRole.STAFF },
+          { reason: 'Customer wants to cancel' },
+        ),
+      ).rejects.toThrow(OrderCancellationRestrictedException);
+
+      mockTx.orderActivity.findFirst
+        .mockResolvedValueOnce({ id: 'mfg-1', eventType: 'MANUFACTURING_STARTED' })
+        .mockResolvedValueOnce(null);
+
+      const reqRes = await service.cancelOrder(
+        'order-uuid-1',
+        { userId: 'staff-1', role: UserRole.STAFF },
+        { reason: 'Exceptional defect', requestApproval: true },
+      );
+
+      expect(reqRes.cancellationState).toBe('APPROVAL_REQUESTED');
+      expect(reqRes.activity.eventType).toBe('CANCELLATION_REQUESTED');
+    });
+
+    it('creates update-only and update-and-notify customer updates independently of order status', async () => {
+      mockTx.order.findUnique.mockResolvedValue({
+        ...mockOrder,
+        status: OrderStatus.PROCESSING,
+        user: { id: 'u1', name: 'Customer', email: 'c@example.com' },
+      });
+
+      const updateOnly = await service.createCustomerUpdate('order-uuid-1', 'staff-1', {
+        category: 'PREDEFINED_UPDATE',
+        templateKey: 'QUALITY_CHECK_PASSED',
+        notifyCustomer: false,
+      });
+      expect(updateOnly.isCustomerVisible).toBe(true);
+      expect(updateOnly.notification).toBeNull();
+
+      const withNotify = await service.createCustomerUpdate('order-uuid-1', 'staff-1', {
+        category: 'CUSTOM_MESSAGE',
+        message: 'We will dispatch tomorrow morning.',
+        notifyCustomer: true,
+      });
+      expect(withNotify.notification).toMatchObject({
+        recipient: 'c@example.com',
+        status: InvoiceEmailStatus.PENDING,
+      });
     });
   });
 });

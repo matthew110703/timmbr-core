@@ -40,6 +40,7 @@ export class OrderItemResponseDto {
 
 export class OrderResponseDto {
   id!: string;
+  orderNumber!: string;
   userId!: string;
   cartId!: string | null;
   status!: OrderStatus;
@@ -49,6 +50,10 @@ export class OrderResponseDto {
   tax!: number;
   grandTotal!: number;
   currency!: string;
+  paymentMethod!: PaymentProvider | null;
+  acknowledgedAt!: Date | null;
+  acknowledgedById!: string | null;
+  installationRequired!: boolean;
   shippingAddressId!: string | null;
   shippingAddress!: any;
   billingAddressId?: string | null;
@@ -92,8 +97,12 @@ export class AdminOrderCustomerDto {
 
 export class AdminOrderListItemDto {
   id!: string;
+  orderNumber!: string;
   status!: OrderStatus;
   paymentStatus!: PaymentStatus | null;
+  paymentMethod!: PaymentProvider | null;
+  thumbnail!: string | null;
+  acknowledgedAt!: Date | null;
   grandTotal!: number;
   currency!: string;
   itemsCount!: number;

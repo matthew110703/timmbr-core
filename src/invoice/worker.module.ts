@@ -7,6 +7,9 @@ import { MediaModule } from '@/media/media.module';
 import { MailerModule } from '@/mailer/mailer.module';
 import { env } from '@/config/env';
 import { INVOICE_EMAIL_QUEUE, INVOICE_PDF_QUEUE } from './queue/invoice.queue.constants';
+import { ORDER_NOTIFICATION_QUEUE } from '@/order/queue/order-notification.queue.constants';
+import { OrderNotificationService } from '@/order/queue/order-notification.service';
+import { OrderNotificationProcessor } from '@/order/queue/order-notification.processor';
 import { InvoiceRepository } from './invoice.repository';
 import { InvoiceEmailService } from './email/invoice-email.service';
 import { OutboxDispatcherService } from './outbox/outbox-dispatcher.service';
@@ -32,15 +35,21 @@ import { InvoiceEmailProcessor } from './email/invoice-email.processor';
         maxRetriesPerRequest: null,
       },
     }),
-    BullModule.registerQueue({ name: INVOICE_PDF_QUEUE }, { name: INVOICE_EMAIL_QUEUE }),
+    BullModule.registerQueue(
+      { name: INVOICE_PDF_QUEUE },
+      { name: INVOICE_EMAIL_QUEUE },
+      { name: ORDER_NOTIFICATION_QUEUE },
+    ),
   ],
   providers: [
     InvoiceRepository,
     InvoiceEmailService,
+    OrderNotificationService,
     OutboxDispatcherService,
     PdfRendererService,
     InvoicePdfProcessor,
     InvoiceEmailProcessor,
+    OrderNotificationProcessor,
   ],
 })
 export class InvoiceWorkerModule {}

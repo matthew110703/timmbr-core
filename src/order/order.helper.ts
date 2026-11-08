@@ -56,6 +56,13 @@ export function convertRupeesToPaise(amount: number): number {
 }
 
 /**
+ * Deterministic human-readable order identifier derived from the order UUID.
+ */
+export function formatOrderNumber(orderId: string): string {
+  return `#TMB-${orderId.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+}
+
+/**
  * Rounds a floating-point currency or financial amount to 2 decimal places.
  */
 export function roundToTwoDecimals(amount: number): number {

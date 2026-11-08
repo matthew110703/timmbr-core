@@ -1,7 +1,7 @@
 import { PaginationDto } from '@/common/dto/pagination.dto';
 import { OrderStatus } from '@prisma/client';
 import { Transform } from 'class-transformer';
-import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class GetOrdersQueryDto extends PaginationDto {
   /**
@@ -26,4 +26,14 @@ export class GetOrdersQueryDto extends PaginationDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => value === 'true' || value === true)
+  @IsBoolean()
+  unacknowledgedOnly?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => value === 'true' || value === true)
+  @IsBoolean()
+  paidOnly?: boolean;
 }

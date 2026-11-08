@@ -21,6 +21,7 @@ import {
   OrderResponseDto,
   PaymentSessionResponseDto,
 } from '../dto/order-response.dto';
+import { OrderActivityResponseDto } from '../dto/order-activity.dto';
 import { PaymentResponseDto } from '@/payment/dto/payment-response.dto';
 import { PaginatedResult } from '@/common/types/api-response.types';
 
@@ -78,5 +79,15 @@ export class OrderController {
   ): Promise<PaymentResponseDto> {
     const user = req.user as unknown as JwtPayload;
     return this.orderService.getUserOrderPayment(user.sub, orderId);
+  }
+
+  @Get(ORDER_ROUTES.ACTIVITIES)
+  @ResponseMessage('Order activity timeline fetched successfully.')
+  async getOrderActivities(
+    @Req() req: FastifyRequest,
+    @Param('orderId') orderId: string,
+  ): Promise<OrderActivityResponseDto[]> {
+    const user = req.user as unknown as JwtPayload;
+    return this.orderService.getUserOrderActivities(user.sub, orderId);
   }
 }

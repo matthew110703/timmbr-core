@@ -1,10 +1,22 @@
-import { InvoicePdfStatus, InvoiceStatus, Order, OrderItem, Payment } from '@prisma/client';
+import {
+  InvoicePdfStatus,
+  InvoiceStatus,
+  Order,
+  OrderActivity,
+  OrderItem,
+  OrderNotificationDelivery,
+  Payment,
+  PaymentStatus,
+  UserRole,
+} from '@prisma/client';
 import {
   AdminOrderListItemDto,
   OrderInvoiceSummaryDto,
   OrderItemResponseDto,
   OrderResponseDto,
 } from './dto/order-response.dto';
+import { OrderActivityResponseDto } from './dto/order-activity.dto';
+import { formatOrderNumber } from './order.helper';
 import { PaymentMapper } from '@/payment/payment.mapper';
 
 type ImageRef = { images: { storageKey: string }[] } | null;
@@ -27,6 +39,21 @@ export type OrderWithRelations = Order & {
   items: OrderItemWithImages[];
   payments?: Payment[];
   invoice?: OrderInvoiceSummaryRecord | null;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+  } | null;
+};
+
+export type OrderActivityWithRelations = OrderActivity & {
+  staff?: {
+    id: string;
+    name: string;
+    role: UserRole;
+  } | null;
+  notification?: OrderNotificationDelivery | null;
 };
 
 /** Turns a storage key into a public URL (MediaService.getPublicUrl). */
@@ -85,8 +112,16 @@ export class OrderMapper {
     order: OrderWithRelations,
     resolveThumbnail?: ThumbnailResolver,
   ): OrderResponseDto {
+    const paidOrLatestPayment =
+      order.payments?.find((p) => p.status === PaymentStatus.PAID) ?? order.payments?.[0];
+    const installationRequired = (order.items || []).some((item) => {
+      const meta = item.metadata as Record<string, unknown> | null | undefined;
+      return Boolean(meta?.installationRequired || meta?.installation);
+    });
+
     return {
       id: order.id,
+      orderNumber: formatOrderNumber(order.id),
       userId: order.userId,
       cartId: order.cartId ?? null,
       status: order.status,
@@ -96,6 +131,10 @@ export class OrderMapper {
       tax: Number(order.tax),
       grandTotal: Number(order.grandTotal),
       currency: order.currency,
+      paymentMethod: paidOrLatestPayment?.provider ?? null,
+      acknowledgedAt: order.acknowledgedAt ?? null,
+      acknowledgedById: order.acknowledgedById ?? null,
+      installationRequired,
       shippingAddressId: order.shippingAddressId ?? null,
       shippingAddress: order.shippingAddress,
       ...(order.billingAddressId !== undefined && {
@@ -116,7 +155,7 @@ export class OrderMapper {
     };
   }
 
-  static toAdminListItem(order: any): AdminOrderListItemDto {
+  static toAdminListItem(order: any, resolveThumbnail?: ThumbnailResolver): AdminOrderListItemDto {
     const shippingAddr = order.shippingAddress as Record<string, any> | null;
     const customerName =
       order.user?.name ||
@@ -126,10 +165,18 @@ export class OrderMapper {
     const customerEmail = order.user?.email || shippingAddr?.email || '';
     const customerPhone = order.user?.phone || shippingAddr?.phone || null;
 
+    const firstItem = order.items?.[0] as OrderItemWithImages | undefined;
+    const storageKey =
+      firstItem?.variant?.images?.[0]?.storageKey ?? firstItem?.product?.images?.[0]?.storageKey;
+
     return {
       id: order.id,
+      orderNumber: formatOrderNumber(order.id),
       status: order.status,
       paymentStatus: order.payments?.[0]?.status ?? null,
+      paymentMethod: order.payments?.[0]?.provider ?? null,
+      thumbnail: storageKey && resolveThumbnail ? resolveThumbnail(storageKey) : null,
+      acknowledgedAt: order.acknowledgedAt ?? null,
       grandTotal: Number(order.grandTotal),
       currency: order.currency,
       itemsCount: order._count?.items ?? order.items?.length ?? 0,
@@ -142,6 +189,39 @@ export class OrderMapper {
       placedAt: order.placedAt ?? null,
       expiresAt: order.expiresAt ?? null,
       createdAt: order.createdAt,
+    };
+  }
+
+  static toActivityResponse(activity: OrderActivityWithRelations): OrderActivityResponseDto {
+    return {
+      id: activity.id,
+      orderId: activity.orderId,
+      staffId: activity.staffId ?? null,
+      staff: activity.staff
+        ? {
+            id: activity.staff.id,
+            name: activity.staff.name,
+            role: activity.staff.role,
+          }
+        : null,
+      eventType: activity.eventType,
+      description: activity.description,
+      updateCategory: activity.updateCategory ?? null,
+      isCustomerVisible: activity.isCustomerVisible,
+      metadata: activity.metadata ?? null,
+      notification: activity.notification
+        ? {
+            id: activity.notification.id,
+            channel: activity.notification.channel,
+            recipient: activity.notification.recipient,
+            status: activity.notification.status,
+            attempts: activity.notification.attempts,
+            sentAt: activity.notification.sentAt ?? null,
+            lastError: activity.notification.lastError ?? null,
+            createdAt: activity.notification.createdAt,
+          }
+        : null,
+      createdAt: activity.createdAt,
     };
   }
 }

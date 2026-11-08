@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
-import { OrderStatus, Prisma } from '@prisma/client';
-import { OrderWithRelations } from './order.mapper';
+import { OrderStatus, PaymentStatus, Prisma } from '@prisma/client';
+import { OrderActivityWithRelations, OrderWithRelations } from './order.mapper';
 
 /** Items with their variant / product primary image, for thumbnails. */
 const primaryImage = { where: { isPrimary: true }, take: 1, select: { storageKey: true } } as const;
@@ -21,6 +21,17 @@ export const invoiceSummarySelect = {
     issuedAt: true,
   },
 } satisfies Prisma.Order$invoiceArgs;
+
+export const activityInclude = {
+  staff: {
+    select: {
+      id: true,
+      name: true,
+      role: true,
+    },
+  },
+  notification: true,
+} satisfies Prisma.OrderActivityInclude;
 
 @Injectable()
 export class OrderRepository {
@@ -121,6 +132,15 @@ export class OrderRepository {
             orderBy: { createdAt: 'desc' },
             select: {
               status: true,
+              provider: true,
+            },
+          },
+          items: {
+            take: 1,
+            orderBy: { createdAt: 'asc' },
+            include: {
+              variant: { select: { images: primaryImage } },
+              product: { select: { slug: true, images: primaryImage } },
             },
           },
           _count: {
@@ -135,6 +155,99 @@ export class OrderRepository {
       }),
       this.prisma.order.count({ where: where }),
     ]);
+  }
+
+  async getDashboardStats() {
+    const paidFilter: Prisma.PaymentListRelationFilter = {
+      some: { status: PaymentStatus.PAID },
+    };
+
+    const [newOrders, processing, outForDelivery, completed, recentOrders] =
+      await this.prisma.$transaction([
+        this.prisma.order.count({
+          where: {
+            status: OrderStatus.CONFIRMED,
+            acknowledgedAt: null,
+            payments: paidFilter,
+          },
+        }),
+        this.prisma.order.count({
+          where: {
+            status: OrderStatus.PROCESSING,
+            payments: paidFilter,
+          },
+        }),
+        this.prisma.order.count({
+          where: {
+            status: OrderStatus.SHIPPED,
+            payments: paidFilter,
+          },
+        }),
+        this.prisma.order.count({
+          where: {
+            status: OrderStatus.DELIVERED,
+            payments: paidFilter,
+          },
+        }),
+        this.prisma.order.findMany({
+          where: {
+            status: { not: OrderStatus.PENDING },
+            payments: paidFilter,
+          },
+          take: 5,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                phone: true,
+              },
+            },
+            payments: {
+              take: 1,
+              orderBy: { createdAt: 'desc' },
+              select: {
+                status: true,
+                provider: true,
+              },
+            },
+            items: {
+              take: 1,
+              orderBy: { createdAt: 'asc' },
+              include: {
+                variant: { select: { images: primaryImage } },
+                product: { select: { slug: true, images: primaryImage } },
+              },
+            },
+            _count: {
+              select: {
+                items: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+    return {
+      counts: { newOrders, processing, outForDelivery, completed },
+      recentOrders,
+    };
+  }
+
+  async findOrderActivities(
+    orderId: string,
+    onlyCustomerVisible = false,
+  ): Promise<OrderActivityWithRelations[]> {
+    return this.prisma.orderActivity.findMany({
+      where: {
+        orderId,
+        ...(onlyCustomerVisible && { isCustomerVisible: true }),
+      },
+      include: activityInclude,
+      orderBy: { createdAt: 'asc' },
+    });
   }
 
   async update(id: string, data: Prisma.OrderUpdateInput): Promise<OrderWithRelations> {

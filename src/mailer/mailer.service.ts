@@ -10,12 +10,20 @@ import {
   invoiceEmailTemplate,
   InvoiceEmailTemplateParams,
 } from './templates/invoice-email.template';
+import {
+  orderUpdateEmailTemplate,
+  OrderUpdateEmailTemplateParams,
+} from './templates/order-update-email.template';
 import { sanitizeInvoicePdfFileName } from '@/invoice/utils/invoice-number.util';
 
 export interface SendInvoiceEmailOptions extends InvoiceEmailTemplateParams {
   to: string;
   pdfBuffer: Buffer;
   attachmentFileName?: string;
+}
+
+export interface SendOrderUpdateEmailOptions extends OrderUpdateEmailTemplateParams {
+  to: string;
 }
 
 interface InternalSendMailOptions {
@@ -135,6 +143,20 @@ export class MailerService {
           content: options.pdfBuffer,
         },
       ],
+    });
+  }
+
+  async sendOrderUpdateEmail(options: SendOrderUpdateEmailOptions): Promise<void> {
+    await this.dispatchEmail({
+      to: options.to,
+      subject: `Update on your Timmbr order (${options.orderNumber})`,
+      html: orderUpdateEmailTemplate({
+        customerName: options.customerName,
+        orderNumber: options.orderNumber,
+        orderStatus: options.orderStatus,
+        updateCategory: options.updateCategory,
+        message: options.message,
+      }),
     });
   }
 }

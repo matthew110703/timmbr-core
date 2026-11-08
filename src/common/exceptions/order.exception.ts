@@ -56,3 +56,23 @@ export class OrderNotPayableException extends ConflictException {
     super({ message, code: 'ORDER_NOT_PAYABLE' });
   }
 }
+
+export class OrderCancellationRestrictedException extends ConflictException {
+  constructor(
+    message = 'Direct cancellation is unavailable after manufacturing has started. Submit a cancellation request for manager approval.',
+  ) {
+    super({ message, code: 'ORDER_CANCELLATION_RESTRICTED' });
+  }
+}
+
+export class OrderCancellationApprovalNotFoundException extends NotFoundException {
+  constructor(message = 'No pending cancellation approval request was found for this order.') {
+    super({ message, code: 'CANCELLATION_REQUEST_NOT_FOUND' });
+  }
+}
+
+export class OrderInvalidActivityStateException extends BadRequestException {
+  constructor(message = 'Invalid order activity state.') {
+    super({ message, code: 'INVALID_ORDER_ACTIVITY_STATE' });
+  }
+}

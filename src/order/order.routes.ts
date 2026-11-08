@@ -6,4 +6,10 @@ export const ORDER_ROUTES = {
   PAYMENT_SESSION: ':orderId/payment-session',
   ADMIN_ORDERS: 'admin/orders',
   STATUS: ':orderId/status',
+  DASHBOARD_STATS: 'dashboard-stats',
+  ACKNOWLEDGE: ':orderId/acknowledge',
+  ACTIVITIES: ':orderId/activities',
+  CUSTOMER_UPDATES: ':orderId/customer-updates',
+  CANCEL: ':orderId/cancel',
+  CANCEL_APPROVE: ':orderId/cancel/approve',
 } as const;
