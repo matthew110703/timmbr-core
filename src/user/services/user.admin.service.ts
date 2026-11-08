@@ -6,7 +6,7 @@ import {
   EmailAlreadyExistsException,
   UserNotFoundException,
 } from '@/common/exceptions/user.exception';
-import { GetAdminUsersQueryDto } from '../dto/get-admin-users-query.dto';
+import { GetAdminUsersQueryDto, GetStaffUsersQueryDto } from '../dto/get-admin-users-query.dto';
 import { CreateAdminUserDto } from '../dto/create-admin-user.dto';
 import { UpdateAdminUserDto } from '../dto/update-admin-user.dto';
 import { AdminCreateUserResponseDto, AdminUserResponseDto } from '../dto/admin-user-response.dto';
@@ -20,10 +20,18 @@ export class UserAdminService {
   async getAll(query: GetAdminUsersQueryDto): Promise<PaginatedResult<AdminUserResponseDto>> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
+    const search = query.search?.trim();
 
     const where: Prisma.UserWhereInput = {
       role: query.role && query.role !== UserRole.MASTER ? query.role : { not: UserRole.MASTER },
       ...(query.status && { status: query.status }),
+      ...(search && {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+          { phone: { contains: search, mode: 'insensitive' } },
+        ],
+      }),
     };
 
     const [users, total] = await this.userRepository.findPaginated(where, page, limit);
@@ -41,6 +49,10 @@ export class UserAdminService {
         hasPrevPage: page > 1,
       },
     };
+  }
+
+  async getStaffList(query: GetStaffUsersQueryDto): Promise<PaginatedResult<AdminUserResponseDto>> {
+    return this.getAll({ ...query, role: UserRole.STAFF });
   }
 
   async getOne(userId: string): Promise<AdminUserResponseDto> {
@@ -73,7 +85,8 @@ export class UserAdminService {
       name: dto.name,
       email: dto.email,
       password: hashedPassword,
-      role: UserRole.ADMIN,
+      role: dto.role ?? UserRole.ADMIN,
+      permissions: dto.permissions ?? [],
       emailVerified: true,
     });
 

@@ -76,6 +76,45 @@ describe('UserAdminService', () => {
         hasPrevPage: false,
       });
     });
+
+    it('applies case-insensitive search filter when search query is provided', async () => {
+      mockUserRepository.findPaginated.mockResolvedValue([[mockUser], 1]);
+
+      await service.getAll({ page: 1, limit: 20, search: 'arjun' });
+
+      expect(mockUserRepository.findPaginated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          OR: [
+            { name: { contains: 'arjun', mode: 'insensitive' } },
+            { email: { contains: 'arjun', mode: 'insensitive' } },
+            { phone: { contains: 'arjun', mode: 'insensitive' } },
+          ],
+        }),
+        1,
+        20,
+      );
+    });
+  });
+
+  describe('getStaffList', () => {
+    it('returns paginated staff users scoped to UserRole.STAFF', async () => {
+      const staffUser = { ...mockUser, role: UserRole.STAFF, permissions: ['orders:read'] };
+      mockUserRepository.findPaginated.mockResolvedValue([[staffUser], 1]);
+
+      const result = await service.getStaffList({ page: 1, limit: 10, status: UserStatus.ACTIVE });
+
+      expect(mockUserRepository.findPaginated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: UserRole.STAFF,
+          status: UserStatus.ACTIVE,
+        }),
+        1,
+        10,
+      );
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].role).toBe(UserRole.STAFF);
+      expect(result.data[0].permissions).toEqual(['orders:read']);
+    });
   });
 
   describe('getOne', () => {

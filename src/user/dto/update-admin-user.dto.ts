@@ -1,5 +1,6 @@
-import { IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
-import { UserStatus } from '@prisma/client';
+import { IsArray, IsEnum, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { UserRole, UserStatus } from '@prisma/client';
+import { ALL_STAFF_PERMISSIONS, StaffPermission } from '@/common/constants/permissions.constant';
 
 export class UpdateAdminUserDto {
   @IsString({ message: 'Name must be a string' })
@@ -13,4 +14,15 @@ export class UpdateAdminUserDto {
   })
   @IsOptional()
   status?: UserStatus;
+
+  @IsOptional()
+  @IsIn([UserRole.ADMIN, UserRole.STAFF], {
+    message: 'Role must be ADMIN or STAFF',
+  })
+  role?: UserRole;
+
+  @IsOptional()
+  @IsArray()
+  @IsIn(ALL_STAFF_PERMISSIONS, { each: true })
+  permissions?: StaffPermission[];
 }

@@ -1,10 +1,10 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsEnum, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { UserRole, UserStatus } from '@prisma/client';
 
-const ALLOWED_ADMIN_QUERY_ROLES = [UserRole.USER, UserRole.ADMIN] as const;
+const ALLOWED_ADMIN_QUERY_ROLES = [UserRole.USER, UserRole.STAFF, UserRole.ADMIN] as const;
 
-export class GetAdminUsersQueryDto {
+export class GetStaffUsersQueryDto {
   @Type(() => Number)
   @IsInt({ message: 'Page must be an integer' })
   @Min(1, { message: 'Page must be at least 1' })
@@ -24,6 +24,12 @@ export class GetAdminUsersQueryDto {
   @IsOptional()
   status?: UserStatus;
 
+  @IsString()
+  @IsOptional()
+  search?: string;
+}
+
+export class GetAdminUsersQueryDto extends GetStaffUsersQueryDto {
   @IsIn(ALLOWED_ADMIN_QUERY_ROLES, {
     message: `Role must be one of: ${ALLOWED_ADMIN_QUERY_ROLES.join(', ')}`,
   })

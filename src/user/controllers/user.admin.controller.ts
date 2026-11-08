@@ -3,7 +3,7 @@ import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nes
 import { UserRole } from '@prisma/client';
 import { Roles, ResponseMessage } from '@/common/decorators';
 import { UserAdminService } from '../services/user.admin.service';
-import { GetAdminUsersQueryDto } from '../dto/get-admin-users-query.dto';
+import { GetAdminUsersQueryDto, GetStaffUsersQueryDto } from '../dto/get-admin-users-query.dto';
 import { CreateAdminUserDto } from '../dto/create-admin-user.dto';
 import { UpdateAdminUserDto } from '../dto/update-admin-user.dto';
 import { USER_ROUTES } from '../user.routes';
@@ -17,6 +17,12 @@ export class UserAdminController {
   @ResponseMessage('Users fetched successfully.')
   getAll(@Query() query: GetAdminUsersQueryDto) {
     return this.adminUser.getAll(query);
+  }
+
+  @Get(USER_ROUTES.STAFF)
+  @ResponseMessage('Staff users fetched successfully.')
+  getStaffList(@Query() query: GetStaffUsersQueryDto) {
+    return this.adminUser.getStaffList(query);
   }
 
   @Get(USER_ROUTES.BY_ID)
@@ -34,7 +40,7 @@ export class UserAdminController {
 
   @Post()
   @HttpCode(201)
-  @Roles(UserRole.MASTER)
+  @Roles(UserRole.ADMIN, UserRole.MASTER)
   @ResponseMessage('Admin user created successfully.')
   create(@Body() dto: CreateAdminUserDto) {
     return this.adminUser.create(dto);

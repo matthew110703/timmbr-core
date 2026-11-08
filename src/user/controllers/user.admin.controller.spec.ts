@@ -10,6 +10,7 @@ const USER_ID = '11111111-1111-1111-1111-111111111111';
 
 const mockUserAdminService = {
   getAll: jest.fn(),
+  getStaffList: jest.fn(),
   getOne: jest.fn(),
   update: jest.fn(),
   create: jest.fn(),
@@ -66,6 +67,29 @@ describe('UserAdminController', () => {
       const result = await controller.getAll(query);
 
       expect(mockUserAdminService.getAll).toHaveBeenCalledWith(query);
+      expect(result).toBe(paginatedResult);
+    });
+  });
+
+  describe('getStaffList', () => {
+    it('delegates to service.getStaffList', async () => {
+      const query = { page: 1, limit: 20, search: 'Arjun' };
+      const paginatedResult = {
+        data: [{ ...mockAdminUserResponse, role: UserRole.STAFF }],
+        meta: {
+          page: 1,
+          limit: 20,
+          total: 1,
+          totalPages: 1,
+          hasNextPage: false,
+          hasPrevPage: false,
+        },
+      };
+      mockUserAdminService.getStaffList.mockResolvedValue(paginatedResult);
+
+      const result = await controller.getStaffList(query);
+
+      expect(mockUserAdminService.getStaffList).toHaveBeenCalledWith(query);
       expect(result).toBe(paginatedResult);
     });
   });

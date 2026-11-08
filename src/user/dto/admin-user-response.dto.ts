@@ -6,6 +6,7 @@ export class AdminUserResponseDto {
   email!: string;
   phone!: string | null;
   role!: UserRole;
+  permissions!: string[];
   status!: UserStatus;
   emailVerified!: boolean;
   linkedProviders!: OAuthType[];
@@ -19,6 +20,7 @@ export class AdminCreateUserResponseDto {
   name!: string;
   email!: string;
   role!: UserRole;
+  permissions!: string[];
   status!: UserStatus;
   createdAt!: Date;
 }

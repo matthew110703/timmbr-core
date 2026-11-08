@@ -9,6 +9,7 @@ export class AdminUserMapper {
       email: user.email,
       phone: user.phone ?? null,
       role: user.role,
+      permissions: user.permissions ?? [],
       status: user.status,
       emailVerified: user.emailVerified,
       linkedProviders: user.providers.map((p) => p.type),
@@ -24,6 +25,7 @@ export class AdminUserMapper {
       name: user.name,
       email: user.email,
       role: user.role,
+      permissions: user.permissions ?? [],
       status: user.status,
       createdAt: user.createdAt,
     };
