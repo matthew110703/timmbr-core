@@ -12,6 +12,7 @@ export interface AuthSession {
   name: string;
   email: string;
   role: UserRole;
+  permissions: string[];
   emailVerified: boolean;
   accessToken: string;
   refreshToken: string;
@@ -33,6 +34,7 @@ export class AuthMapper {
       name: user.name,
       email: user.email,
       role: user.role,
+      permissions: user.permissions ?? [],
       emailVerified: user.emailVerified,
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,

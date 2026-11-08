@@ -31,17 +31,24 @@ model Order {
   // Administrative flag if invoice issuance is blocked after payment commit
   invoiceIssueError String?
 
+  // Staff acknowledgement metadata
+  acknowledgedAt    DateTime?
+  acknowledgedById  String?
+
   expiresAt         DateTime?
   placedAt          DateTime?
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
   // Relations
-  user              User        @relation(fields: [userId], references: [id])
-  cart              Cart?       @relation(fields: [cartId], references: [id])
+  user              User            @relation(fields: [userId], references: [id])
+  cart              Cart?           @relation(fields: [cartId], references: [id])
   items             OrderItem[]
   payments          Payment[]
   invoice           Invoice?
+  acknowledgedBy    User?           @relation("AcknowledgedOrders", fields: [acknowledgedById], references: [id])
+  activities        OrderActivity[]
 
   @@index([status, expiresAt])
+  @@index([status, acknowledgedAt])
 }

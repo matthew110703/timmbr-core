@@ -22,6 +22,11 @@ export class OriginGuard implements CanActivate {
     // Requests without an Origin header (e.g. server-to-server webhooks, health checks, cron jobs).
     // The storefront BFF is server-to-server too, and identifies itself with the internal key.
     if (!rawOrigin || typeof rawOrigin !== 'string') {
+      const platform = (request.headers['x-client-platform'] as string | undefined)?.toLowerCase();
+      if (platform === 'staff-companion') {
+        request.application = Application.STAFF_COMPANION;
+        return true;
+      }
       request.application = request.trustedClient ? Application.STOREFRONT : undefined;
       return true;
     }

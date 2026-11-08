@@ -1,0 +1,41 @@
+model OrderActivity {
+  id                String                     @id @default(uuid())
+  orderId           String
+  staffId           String?
+  eventType         String
+  description       String
+  updateCategory    String?
+  isCustomerVisible Boolean                    @default(false)
+  metadata          Json?
+  idempotencyKey    String?                    @unique
+  createdAt         DateTime                   @default(now())
+
+  order             Order                      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  staff             User?                      @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  notification      OrderNotificationDelivery?
+
+  @@index([orderId, createdAt])
+  @@index([orderId, eventType])
+  @@index([orderId, isCustomerVisible, createdAt])
+}
+
+model OrderNotificationDelivery {
+  id            String             @id @default(uuid())
+  activityId    String             @unique
+  orderId       String
+  channel       String             @default("EMAIL")
+  recipient     String
+  status        InvoiceEmailStatus @default(PENDING)
+  attempts      Int                @default(0)
+  lastError     String?
+  lastAttemptAt DateTime?
+  sentAt        DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  activity      OrderActivity      @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@index([status])
+}
+

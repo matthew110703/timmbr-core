@@ -116,8 +116,8 @@ export class AuthController {
   async refresh(@Req() req: FastifyRequest, @Res({ passthrough: true }) reply: FastifyReply) {
     const user = req.user as unknown as JwtPayload & { refreshToken: string };
     const tokens = await this.auth.refreshTokens(user.sub, user.refreshToken);
-    // Trusted clients (storefront BFF) keep the refresh token in their own cookie.
-    if (req.trustedClient) return tokens;
+    // Trusted clients (storefront BFF) and native staff companion keep the refresh token outside browser cookies.
+    if (req.trustedClient || req.application === Application.STAFF_COMPANION) return tokens;
     setRefreshCookie(reply, req.application, tokens.refreshToken);
     return { accessToken: tokens.accessToken };
   }
@@ -129,7 +129,9 @@ export class AuthController {
   async logout(@Req() req: FastifyRequest, @Res({ passthrough: true }) reply: FastifyReply) {
     const token = readRefreshToken(req);
     if (token) await this.auth.revokeRefreshToken(token);
-    if (!req.trustedClient) clearRefreshCookie(reply, req.application);
+    if (!req.trustedClient && req.application !== Application.STAFF_COMPANION) {
+      clearRefreshCookie(reply, req.application);
+    }
   }
 
   @Post(AUTH_ROUTES.LOGOUT_ALL)
@@ -138,7 +140,9 @@ export class AuthController {
   async logoutAll(@Req() req: FastifyRequest, @Res({ passthrough: true }) reply: FastifyReply) {
     const user = req.user as unknown as JwtPayload;
     await this.auth.revokeAllSessions(user.sub);
-    if (!req.trustedClient) clearRefreshCookie(reply, req.application);
+    if (!req.trustedClient && req.application !== Application.STAFF_COMPANION) {
+      clearRefreshCookie(reply, req.application);
+    }
   }
 
   // ─── Passwords ───────────────────────────────────────────────────────────────

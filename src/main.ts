@@ -89,6 +89,8 @@ async function bootstrap() {
       'sec-ch-ua-platform',
       'x-request-id',
       'X-Request-Id',
+      'x-client-platform',
+      'X-Client-Platform',
     ],
     exposedHeaders: ['x-request-id', 'X-Request-Id'],
   });

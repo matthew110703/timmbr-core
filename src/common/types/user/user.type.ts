@@ -13,6 +13,7 @@ export interface User {
   phone?: string | null;
   emailVerified: boolean;
   password?: string | null;
+  permissions?: string[];
   lastLoginAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;

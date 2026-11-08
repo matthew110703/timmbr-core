@@ -37,8 +37,15 @@ export class TokenService {
   ) {}
 
   /** Sign a new pair and register the refresh token. */
-  async issue(user: Pick<User, 'id' | 'email' | 'role'>): Promise<TokenPair> {
-    const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role };
+  async issue(
+    user: Pick<User, 'id' | 'email' | 'role'> & { permissions?: string[] },
+  ): Promise<TokenPair> {
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      permissions: user.permissions ?? [],
+    };
 
     // A unique `jti` keeps two tokens issued in the same second distinct.
     const [accessToken, refreshToken] = await Promise.all([

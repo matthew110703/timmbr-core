@@ -157,6 +157,51 @@ describe('AuthService', () => {
         service.login({ identifier: 'a@b.co', password: 'pw' }, Application.ADMIN_CONSOLE),
       ).rejects.toThrow(ForbiddenException);
     });
+
+    it('blocks customers from Staff Companion', async () => {
+      repo.findUserByEmailWithProviders.mockResolvedValue(baseUser);
+      (argon2.verify as jest.Mock).mockResolvedValue(true);
+
+      await expect(
+        service.login({ identifier: 'a@b.co', password: 'pw' }, Application.STAFF_COMPANION),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows STAFF users to sign in to Staff Companion and returns permissions', async () => {
+      const staffUser = {
+        ...baseUser,
+        role: UserRole.STAFF,
+        permissions: ['orders:read', 'orders:update'],
+      };
+      repo.findUserByEmailWithProviders.mockResolvedValue(staffUser);
+      repo.updateUser.mockResolvedValue(staffUser);
+      (argon2.verify as jest.Mock).mockResolvedValue(true);
+
+      const session = await service.login(
+        { identifier: 'staff@timmbr.com', password: 'pw' },
+        Application.STAFF_COMPANION,
+      );
+
+      expect(session).toMatchObject({
+        role: UserRole.STAFF,
+        permissions: ['orders:read', 'orders:update'],
+      });
+    });
+
+    it('blocks STAFF users from the Admin Console', async () => {
+      repo.findUserByEmailWithProviders.mockResolvedValue({
+        ...baseUser,
+        role: UserRole.STAFF,
+      });
+      (argon2.verify as jest.Mock).mockResolvedValue(true);
+
+      await expect(
+        service.login(
+          { identifier: 'staff@timmbr.com', password: 'pw' },
+          Application.ADMIN_CONSOLE,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
   });
 
   // ─── verifyOtp ───────────────────────────────────────────────────────────────
@@ -228,8 +273,8 @@ describe('AuthService', () => {
       );
     });
 
-    it.each([UserRole.ADMIN, UserRole.MASTER])(
-      'refuses %s accounts from any app (an inbox alone never yields an admin token)',
+    it.each([UserRole.ADMIN, UserRole.MASTER, UserRole.STAFF])(
+      'refuses %s accounts from any app (an inbox alone never yields an admin or staff token)',
       async (role) => {
         otp.verify.mockResolvedValue(emailId);
         repo.findUserByEmailWithProviders.mockResolvedValue({ ...baseUser, role });
@@ -242,14 +287,17 @@ describe('AuthService', () => {
       },
     );
 
-    it('is not allowed for the Admin Console', async () => {
-      await expect(
-        service.verifyOtp('dany@example.com', '123456', {
-          application: Application.ADMIN_CONSOLE,
-        }),
-      ).rejects.toThrow(OtpNotAllowedForAdminException);
-      expect(otp.verify).not.toHaveBeenCalled();
-    });
+    it.each([Application.ADMIN_CONSOLE, Application.STAFF_COMPANION])(
+      'is not allowed for %s',
+      async (application) => {
+        await expect(
+          service.verifyOtp('dany@example.com', '123456', {
+            application,
+          }),
+        ).rejects.toThrow(OtpNotAllowedForAdminException);
+        expect(otp.verify).not.toHaveBeenCalled();
+      },
+    );
   });
 
   // ─── setPassword ─────────────────────────────────────────────────────────────
@@ -330,8 +378,8 @@ describe('AuthService', () => {
       );
     });
 
-    it.each([UserRole.ADMIN, UserRole.MASTER])(
-      'refuses %s accounts (a Google account alone never yields an admin token)',
+    it.each([UserRole.ADMIN, UserRole.MASTER, UserRole.STAFF])(
+      'refuses %s accounts (a Google account alone never yields an admin or staff token)',
       async (role) => {
         repo.findUserByProvider.mockResolvedValue(null);
         repo.findUserByEmailWithProviders.mockResolvedValue({ ...baseUser, role });

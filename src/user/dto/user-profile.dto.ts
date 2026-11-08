@@ -5,6 +5,7 @@ export class UserProfileDto {
   name!: string;
   email!: string;
   role!: UserRole;
+  permissions!: string[];
   phone!: string | null;
   emailVerified!: boolean;
   hasPassword!: boolean;

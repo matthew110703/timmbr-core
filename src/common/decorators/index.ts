@@ -7,3 +7,4 @@ export * from './is-compare-at-price-valid.decorator';
 export * from './current-application.decorator';
 export * from './optional-auth.decorator';
 export * from './trusted-unthrottled.decorator';
+export * from './permissions.decorator';

@@ -51,7 +51,7 @@ export function readRefreshCookie(req: FastifyRequest): string | undefined {
  * keep it in their own cookie on the storefront domain.
  */
 export function readRefreshToken(req: FastifyRequest): string | undefined {
-  if (req.trustedClient) {
+  if (req.trustedClient || req.application === Application.STAFF_COMPANION) {
     const fromBody = (req.body as { refreshToken?: unknown } | undefined)?.refreshToken;
     if (typeof fromBody === 'string' && fromBody) return fromBody;
   }

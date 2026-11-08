@@ -59,6 +59,10 @@ const phonePlaceholderEmail = (e164: string) => `${e164.slice(1)}@phone.timmbr.c
 /** Roles that can use the Admin Console API. They must always sign in with their password. */
 const isAdminRole = (role: UserRole) => role === UserRole.ADMIN || role === UserRole.MASTER;
 
+/** Roles that belong to organization staff and must always sign in with their password. */
+const isPrivilegedRole = (role: UserRole) =>
+  role === UserRole.ADMIN || role === UserRole.MASTER || role === UserRole.STAFF;
+
 /**
  * Hash of a random password, verified against when the account doesn't exist
  * (or has no password) so a failed login takes the same time either way and
@@ -117,8 +121,10 @@ export class AuthService {
     code: string,
     { application, intent = 'login' }: { application?: Application; intent?: OtpIntent } = {},
   ): Promise<AuthSession> {
-    // Admins must use their password; an inbox alone isn't enough for the console.
-    if (application === Application.ADMIN_CONSOLE) throw new OtpNotAllowedForAdminException();
+    // Admins and staff must use their password; an inbox alone isn't enough.
+    if (application === Application.ADMIN_CONSOLE || application === Application.STAFF_COMPANION) {
+      throw new OtpNotAllowedForAdminException();
+    }
 
     const id = await this.otp.verify(identifier, code);
     const existing = await this.findUserByIdentifier(id);
@@ -127,9 +133,8 @@ export class AuthService {
     let user: UserWithProviders;
     if (existing) {
       this.assertActive(existing);
-      // Whatever app is asking: an inbox alone must never yield an admin token
-      // (the access token's role is all the Admin Console API checks).
-      if (isAdminRole(existing.role)) throw new OtpNotAllowedForAdminException();
+      // Whatever app is asking: an inbox alone must never yield an admin or staff token.
+      if (isPrivilegedRole(existing.role)) throw new OtpNotAllowedForAdminException();
       user = await this.authRepository.updateUser(existing.id, {
         lastLoginAt: now,
         ...(id.type === 'email' &&
@@ -208,8 +213,8 @@ export class AuthService {
     }
 
     this.assertActive(existing);
-    // A Google account alone must never yield an admin token: admins use their password.
-    if (isAdminRole(existing.role)) throw new OAuthNotAllowedForAdminException();
+    // A Google account alone must never yield an admin or staff token: they use their password.
+    if (isPrivilegedRole(existing.role)) throw new OAuthNotAllowedForAdminException();
     if (!existing.providers.some((p) => p.type === type)) {
       await this.authRepository.upsertUserProvider(existing.id, type, providerUid);
     }
@@ -372,6 +377,11 @@ export class AuthService {
     if (application === Application.ADMIN_CONSOLE && !isAdminRole(user.role)) {
       throw new ForbiddenException(
         'Access denied. Only administrative accounts may sign in to the Admin Console.',
+      );
+    }
+    if (application === Application.STAFF_COMPANION && !isPrivilegedRole(user.role)) {
+      throw new ForbiddenException(
+        'Access denied. Only organization staff accounts may sign in to Staff Companion.',
       );
     }
   }
