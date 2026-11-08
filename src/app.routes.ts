@@ -16,6 +16,7 @@ export const APP_ROUTES = {
   ORDERS: 'orders',
   INVOICES: 'invoices',
   PAYMENTS: 'payments',
+  TRANSACTIONS: 'transactions',
   WEBHOOKS: 'webhooks',
   ADDRESSES: 'addresses',
   GEO: 'geo',

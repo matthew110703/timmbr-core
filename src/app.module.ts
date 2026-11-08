@@ -14,6 +14,7 @@ import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { AccessTokenGuard } from './auth/guards/access-token.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
+import { PermissionsGuard } from './auth/guards/permissions.guard';
 import { OriginGuard } from './common/guards/origin.guard';
 import { RedisModule } from './redis/redis.module';
 import { MailerModule } from './mailer/mailer.module';
@@ -26,6 +27,7 @@ import { ProductModule } from './product/product.module';
 import { MediaModule } from './media/media.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { PaymentModule } from './payment/payment.module';
+import { TransactionModule } from './transaction/transaction.module';
 import { CartModule } from './cart/cart.module';
 import { OrderModule } from './order/order.module';
 import { InvoiceModule } from './invoice/invoice.module';
@@ -56,6 +58,7 @@ import { CatalogModule } from './catalog/catalog.module';
     MediaModule,
     InventoryModule,
     PaymentModule,
+    TransactionModule,
     CartModule,
     OrderModule,
     InvoiceModule,
@@ -71,6 +74,7 @@ import { CatalogModule } from './catalog/catalog.module';
     { provide: APP_GUARD, useClass: AppThrottlerGuard },
     { provide: APP_GUARD, useClass: AccessTokenGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: PermissionsGuard },
   ],
 })
 export class AppModule {}
