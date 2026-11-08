@@ -37,3 +37,20 @@ describe('GetOrdersQueryDto.status', () => {
     expect(errors.map((e) => e.property)).toContain('status');
   });
 });
+
+describe('GetOrdersQueryDto.sort', () => {
+  it('accepts sortBy and order', async () => {
+    const { dto, errors } = await parse({
+      sortBy: 'grandTotal',
+      order: 'asc',
+    });
+    expect(errors).toHaveLength(0);
+    expect(dto.sortBy).toBe('grandTotal');
+    expect(dto.order).toBe('asc');
+  });
+
+  it('rejects invalid sortBy', async () => {
+    const { errors } = await parse({ sortBy: 'orderNumber' });
+    expect(errors.map((e) => e.property)).toContain('sortBy');
+  });
+});

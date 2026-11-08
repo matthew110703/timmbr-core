@@ -471,7 +471,16 @@ export class OrderService {
       }),
     };
 
-    const [orders, total] = await this.orderRepository.findAdminOrders(where, page, limit);
+    const sortBy = query.sortBy ?? 'createdAt';
+    const sortOrder = query.order ?? 'desc';
+
+    const [orders, total] = await this.orderRepository.findAdminOrders(
+      where,
+      page,
+      limit,
+      sortBy,
+      sortOrder,
+    );
     const totalPages = Math.ceil(total / limit);
 
     return {

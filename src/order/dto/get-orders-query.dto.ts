@@ -3,6 +3,9 @@ import { OrderStatus } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 
+export type AdminOrderSortField = 'createdAt' | 'placedAt' | 'grandTotal';
+export type OrderSortDirection = 'asc' | 'desc';
+
 export class GetOrdersQueryDto extends PaginationDto {
   /**
    * One status or several, comma-separated (`?status=CONFIRMED,PROCESSING,SHIPPED`)
@@ -36,4 +39,14 @@ export class GetOrdersQueryDto extends PaginationDto {
   @Transform(({ value }: { value: unknown }) => value === 'true' || value === true)
   @IsBoolean()
   paidOnly?: boolean;
+
+  @IsOptional()
+  @IsEnum(['createdAt', 'placedAt', 'grandTotal'], {
+    message: 'sortBy must be createdAt, placedAt, or grandTotal',
+  })
+  sortBy?: AdminOrderSortField;
+
+  @IsOptional()
+  @IsEnum(['asc', 'desc'], { message: 'order must be asc or desc' })
+  order?: OrderSortDirection;
 }

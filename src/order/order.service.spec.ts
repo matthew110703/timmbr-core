@@ -723,6 +723,25 @@ describe('OrderService', () => {
       expect(result.meta.total).toBe(1);
     });
 
+    it('passes sortBy and order to the repository', async () => {
+      orderRepository.findAdminOrders.mockResolvedValue([[], 0]);
+
+      await service.getAdminOrders({
+        page: 1,
+        limit: 20,
+        sortBy: 'placedAt',
+        order: 'asc',
+      });
+
+      expect(orderRepository.findAdminOrders).toHaveBeenCalledWith(
+        expect.any(Object),
+        1,
+        20,
+        'placedAt',
+        'asc',
+      );
+    });
+
     it('enforces paidOnly and excludes PENDING orders when requested for staff', async () => {
       orderRepository.findAdminOrders.mockResolvedValue([[], 0]);
 
@@ -735,6 +754,8 @@ describe('OrderService', () => {
         }),
         1,
         20,
+        'createdAt',
+        'desc',
       );
     });
   });

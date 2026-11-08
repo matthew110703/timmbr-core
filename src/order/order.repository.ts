@@ -114,6 +114,8 @@ export class OrderRepository {
     where: Prisma.OrderWhereInput,
     page = 1,
     limit = 20,
+    sortBy: 'createdAt' | 'placedAt' | 'grandTotal' = 'createdAt',
+    sortOrder: 'asc' | 'desc' = 'desc',
   ): Promise<[any[], number]> {
     return this.prisma.$transaction([
       this.prisma.order.findMany({
@@ -151,7 +153,7 @@ export class OrderRepository {
         },
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { [sortBy]: sortOrder },
       }),
       this.prisma.order.count({ where: where }),
     ]);
