@@ -16,6 +16,7 @@
     "start:prod": "node dist/main",
     "start:worker": "node dist/worker",
     "start:worker:dev": "nest start --entryFile worker --watch",
+    "playwright:install": "playwright install chromium",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" \"*.ts\" --fix",
     "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\" \"*.ts\"",
     "test": "jest",

@@ -46,6 +46,9 @@ lerna-debug.log*
 .temp
 .tmp
 
+# Playwright browsers (project-local cache used on Render via PLAYWRIGHT_BROWSERS_PATH)
+.cache/
+
 # Runtime data
 pids
 *.pid

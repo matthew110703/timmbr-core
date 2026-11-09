@@ -1,5 +1,7 @@
+import { existsSync } from 'node:fs';
 import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { Browser, chromium } from 'playwright';
+import { env } from '@/config/env';
 import { TIMMBR_BRAND_LOGO_URL } from '@/mailer/templates/constants';
 import { InvoiceWithItems } from '../invoice.repository';
 import { INVOICE_TEMPLATE_VERSION_V1 } from '../queue/invoice.queue.constants';
@@ -135,15 +137,84 @@ export class PdfRendererService implements OnApplicationShutdown {
       this.browserPromise = null;
     }
 
+    // #region agent log
+    const executablePath = chromium.executablePath();
+    // Playwright reads PLAYWRIGHT_BROWSERS_PATH itself; surface it for deploy diagnostics only.
+    // eslint-disable-next-line no-restricted-syntax -- temporary debug instrumentation
+    const browsersPathEnv = process.env.PLAYWRIGHT_BROWSERS_PATH ?? null;
+    const executableExists = existsSync(executablePath);
+    const launchDiagnostics = {
+      executablePath,
+      executableExists,
+      browsersPathEnv,
+      cwd: process.cwd(),
+      platform: process.platform,
+      nodeEnv: env.NODE_ENV,
+    };
+    this.logger.log(launchDiagnostics, 'Playwright Chromium launch diagnostics');
+    fetch('http://127.0.0.1:7920/ingest/09f0030a-6f30-4bdb-8a7b-91c0a571b201', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a728c1' },
+      body: JSON.stringify({
+        sessionId: 'a728c1',
+        runId: 'pre-fix',
+        hypothesisId: 'H1-H2',
+        location: 'pdf-renderer.service.ts:getBrowser',
+        message: 'Playwright Chromium launch diagnostics',
+        data: launchDiagnostics,
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+
     this.browserPromise = chromium.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
 
     try {
-      return await this.browserPromise;
+      const browser = await this.browserPromise;
+      // #region agent log
+      fetch('http://127.0.0.1:7920/ingest/09f0030a-6f30-4bdb-8a7b-91c0a571b201', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a728c1' },
+        body: JSON.stringify({
+          sessionId: 'a728c1',
+          runId: 'pre-fix',
+          hypothesisId: 'H1-H2',
+          location: 'pdf-renderer.service.ts:getBrowser:success',
+          message: 'Playwright Chromium launch succeeded',
+          data: {
+            executablePath,
+            executableExists,
+            browsersPathEnv,
+            connected: browser.isConnected(),
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
+      return browser;
     } catch (error) {
       this.browserPromise = null;
+      // #region agent log
+      fetch('http://127.0.0.1:7920/ingest/09f0030a-6f30-4bdb-8a7b-91c0a571b201', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a728c1' },
+        body: JSON.stringify({
+          sessionId: 'a728c1',
+          runId: 'pre-fix',
+          hypothesisId: 'H1-H2',
+          location: 'pdf-renderer.service.ts:getBrowser:error',
+          message: 'Playwright Chromium launch failed',
+          data: {
+            ...launchDiagnostics,
+            errMessage: error instanceof Error ? error.message.slice(0, 300) : String(error),
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
       this.logger.error({ err: error }, 'Failed to launch Playwright Chromium browser');
       throw error;
     }
