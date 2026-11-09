@@ -1,7 +1,12 @@
+jest.mock('@/review/utils/review-sanitize.util', () => ({
+  sanitizeReviewComment: (value: string | null | undefined) => value ?? null,
+}));
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { WebhookController } from './webhook.controller';
 import { WebhookService } from '../webhook.service';
 import { OrderService } from '@/order/order.service';
+import { ReviewMediaService } from '@/review/review-media.service';
 
 describe('WebhookController', () => {
   let controller: WebhookController;
@@ -21,11 +26,16 @@ describe('WebhookController', () => {
       }),
     };
 
+    const mockReviewMediaService = {
+      cleanupAbandonedMedia: jest.fn().mockResolvedValue({ deleted: 0 }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [WebhookController],
       providers: [
         { provide: WebhookService, useValue: mockService },
         { provide: OrderService, useValue: mockOrderService },
+        { provide: ReviewMediaService, useValue: mockReviewMediaService },
       ],
     }).compile();
 
@@ -53,5 +63,10 @@ describe('WebhookController', () => {
       processedCount: 5,
       hasMore: false,
     });
+  });
+
+  it('handles review media cleanup webhook request', async () => {
+    const result = await controller.cleanupReviewMedia();
+    expect(result).toEqual({ deleted: 0 });
   });
 });

@@ -110,6 +110,8 @@ export async function verifyListing(
       coverImageKey: cover?.storageKey ?? null,
       coverAlt: cover?.altText ?? null,
       optionCodes: [...optionCodes],
+      ratingAvg: p.ratingAvg === null ? null : round2(Number(p.ratingAvg)),
+      ratingCount: p.ratingCount,
       createdAt: p.createdAt.getTime(),
     });
   }
@@ -126,6 +128,7 @@ export async function verifyListing(
       ...row,
       price: round2(Number(row.price)),
       compareAtPrice: row.compareAtPrice === null ? null : round2(Number(row.compareAtPrice)),
+      ratingAvg: row.ratingAvg === null ? null : round2(Number(row.ratingAvg)),
       createdAt: row.createdAt.getTime(),
     };
     for (const [field, value] of Object.entries(want)) {

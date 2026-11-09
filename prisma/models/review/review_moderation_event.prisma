@@ -1,0 +1,24 @@
+enum ReviewModerationAction {
+  APPROVE
+  REJECT
+  HIDE
+  RESTORE
+  APPROVE_REVISION
+  REJECT_REVISION
+}
+
+model ReviewModerationEvent {
+  id         String                 @id @default(uuid())
+  reviewId   String
+  revisionId String?
+  actorId    String
+  action     ReviewModerationAction
+  reason     String?
+  createdAt  DateTime               @default(now())
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  actor  User   @relation("ReviewModerationActor", fields: [actorId], references: [id])
+
+  @@index([reviewId, createdAt])
+  @@index([actorId, createdAt])
+}

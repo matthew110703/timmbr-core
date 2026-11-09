@@ -33,4 +33,5 @@ model OrderItem {
 
   @@index([productId])
   @@index([variantId])
+  @@index([orderId, productId])
 }

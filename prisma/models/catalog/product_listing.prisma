@@ -24,6 +24,8 @@ model ProductListing {
   coverAlt            String?
   /// Distinct AttributeOption codes of the product and its ACTIVE variants.
   optionCodes         Int[]    @default([])
+  ratingAvg           Decimal? @db.Decimal(3, 2)
+  ratingCount         Int      @default(0)
   createdAt           DateTime
   refreshedAt         DateTime @default(now())
 

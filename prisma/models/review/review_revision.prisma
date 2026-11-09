@@ -1,0 +1,20 @@
+enum ReviewRevisionStatus {
+  PENDING
+  REJECTED
+}
+
+model ReviewRevision {
+  id        String               @id @default(uuid())
+  reviewId  String
+  rating    Int
+  title     String?
+  comment   String?
+  status    ReviewRevisionStatus @default(PENDING)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  review Review        @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  media  ReviewMedia[]
+
+  @@index([reviewId, status])
+}

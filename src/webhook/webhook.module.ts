@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '@/prisma/prisma.module';
 import { PaymentModule } from '@/payment/payment.module';
 import { OrderModule } from '@/order/order.module';
+import { ReviewModule } from '@/review/review.module';
 import { InvoiceModule } from '@/invoice/invoice.module';
 import { WebhookRepository } from './webhook.repository';
 import { WebhookService } from './webhook.service';
@@ -9,7 +10,7 @@ import { WebhookController } from './controllers/webhook.controller';
 import { CronSecretGuard } from './guards/cron-secret.guard';
 
 @Module({
-  imports: [PrismaModule, PaymentModule, OrderModule, InvoiceModule],
+  imports: [PrismaModule, PaymentModule, OrderModule, InvoiceModule, ReviewModule],
   controllers: [WebhookController],
   providers: [WebhookRepository, WebhookService, CronSecretGuard],
   exports: [WebhookRepository, WebhookService],

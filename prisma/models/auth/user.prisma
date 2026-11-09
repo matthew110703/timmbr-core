@@ -33,4 +33,7 @@ model User {
     voidedInvoices Invoice[] @relation("VoidedInvoices")
     acknowledgedOrders Order[] @relation("AcknowledgedOrders")
     orderActivities OrderActivity[]
+    reviews Review[]
+    reviewHelpfulVotes ReviewHelpfulVote[]
+    reviewModerationEvents ReviewModerationEvent[] @relation("ReviewModerationActor")
 }

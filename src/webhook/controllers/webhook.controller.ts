@@ -15,12 +15,14 @@ import { OrderCleanupResponseDto } from '@/order/dto/order-cleanup-response.dto'
 import { WEBHOOK_ROUTES } from '../webhook.routes';
 import { WebhookService } from '../webhook.service';
 import { CronSecretGuard } from '../guards/cron-secret.guard';
+import { ReviewMediaService } from '@/review/review-media.service';
 
 @Controller(WEBHOOK_ROUTES.WEBHOOKS)
 export class WebhookController {
   constructor(
     private readonly webhookService: WebhookService,
     private readonly orderService: OrderService,
+    private readonly reviewMediaService: ReviewMediaService,
   ) {}
 
   @Post(WEBHOOK_ROUTES.RAZORPAY)
@@ -43,5 +45,14 @@ export class WebhookController {
   @ResponseMessage('Order cleanup executed successfully.')
   async cleanupExpiredOrders(): Promise<OrderCleanupResponseDto> {
     return this.orderService.cleanupExpiredOrders(500);
+  }
+
+  @Post(WEBHOOK_ROUTES.REVIEWS_MEDIA_CLEANUP)
+  @Public()
+  @UseGuards(CronSecretGuard)
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Review media cleanup executed successfully.')
+  async cleanupReviewMedia() {
+    return this.reviewMediaService.cleanupAbandonedMedia();
   }
 }

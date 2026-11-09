@@ -36,6 +36,7 @@ import { PageModule } from './page/page.module';
 import { WishlistModule } from './wishlist/wishlist.module';
 import { GeoModule } from './geo/geo.module';
 import { CatalogModule } from './catalog/catalog.module';
+import { ReviewModule } from './review/review.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { CatalogModule } from './catalog/catalog.module';
     WebhookModule,
     PageModule,
     WishlistModule,
+    ReviewModule,
   ],
   controllers: [AppController],
   providers: [

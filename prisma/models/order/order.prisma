@@ -48,6 +48,7 @@ model Order {
   invoice           Invoice?
   acknowledgedBy    User?           @relation("AcknowledgedOrders", fields: [acknowledgedById], references: [id])
   activities        OrderActivity[]
+  reviews           Review[]
 
   @@index([status, expiresAt])
   @@index([status, acknowledgedAt])
