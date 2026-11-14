@@ -4,17 +4,17 @@ import { UserRole } from '@prisma/client';
 import type { FastifyRequest } from 'fastify';
 import { PERMISSIONS_KEY } from '@/common/decorators/permissions.decorator';
 import { JwtPayload } from '@/auth/types/jwt.types';
-import { StaffPermission } from '@/common/constants/permissions.constant';
+import { Permission } from '@/common/constants/permissions.constant';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredPermissions = this.reflector.getAllAndOverride<StaffPermission[]>(
-      PERMISSIONS_KEY,
-      [context.getHandler(), context.getClass()],
-    );
+    const requiredPermissions = this.reflector.getAllAndOverride<Permission[]>(PERMISSIONS_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
 
     if (!requiredPermissions || requiredPermissions.length === 0) return true;
 
@@ -28,11 +28,13 @@ export class PermissionsGuard implements CanActivate {
       });
     }
 
-    if (user.role === UserRole.ADMIN || user.role === UserRole.MASTER) {
+    // MASTER role has unconditional superadmin bypass
+    if (user.role === UserRole.MASTER) {
       return true;
     }
 
-    if (user.role === UserRole.STAFF) {
+    // ADMIN and STAFF both require explicit assigned permissions
+    if (user.role === UserRole.ADMIN || user.role === UserRole.STAFF) {
       const userPermissions = user.permissions ?? [];
       const hasAll = requiredPermissions.every((perm) => userPermissions.includes(perm));
       if (!hasAll) {

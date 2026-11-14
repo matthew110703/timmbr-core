@@ -1,5 +1,6 @@
 import { APP_ROUTES } from '@/app.routes';
-import { ResponseMessage, Roles } from '@/common/decorators';
+import { PERMISSIONS } from '@/common/constants/permissions.constant';
+import { RequirePermissions, ResponseMessage, Roles } from '@/common/decorators';
 import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import type { FastifyRequest } from 'fastify';
@@ -16,6 +17,7 @@ export class InventoryAdminController {
   constructor(private readonly service: InventoryService) {}
 
   @Get(INVENTORY_ROUTES.TRANSACTIONS)
+  @RequirePermissions(PERMISSIONS.CATALOG_READ)
   @ResponseMessage('Inventory transactions fetched successfully.')
   getTransactions(
     @Param('variantId') variantId: string,
@@ -25,6 +27,7 @@ export class InventoryAdminController {
   }
 
   @Get(INVENTORY_ROUTES.BY_VARIANT_ID)
+  @RequirePermissions(PERMISSIONS.CATALOG_READ)
   @ResponseMessage('Inventory fetched successfully.')
   getByVariantId(@Param('variantId') variantId: string) {
     return this.service.getByVariantId(variantId);
@@ -32,6 +35,7 @@ export class InventoryAdminController {
 
   @Patch(INVENTORY_ROUTES.BY_VARIANT_ID)
   @HttpCode(200)
+  @RequirePermissions(PERMISSIONS.CATALOG_WRITE)
   @ResponseMessage('Inventory updated successfully.')
   update(
     @Param('variantId') variantId: string,
@@ -44,6 +48,7 @@ export class InventoryAdminController {
 
   @Post(INVENTORY_ROUTES.ADJUST)
   @HttpCode(200)
+  @RequirePermissions(PERMISSIONS.CATALOG_WRITE)
   @ResponseMessage('Inventory adjusted successfully.')
   adjust(
     @Param('variantId') variantId: string,

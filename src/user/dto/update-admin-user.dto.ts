@@ -1,6 +1,6 @@
 import { IsArray, IsEnum, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { UserRole, UserStatus } from '@prisma/client';
-import { ALL_STAFF_PERMISSIONS, StaffPermission } from '@/common/constants/permissions.constant';
+import { ALL_PERMISSIONS, Permission } from '@/common/constants/permissions.constant';
 
 export class UpdateAdminUserDto {
   @IsString({ message: 'Name must be a string' })
@@ -23,6 +23,6 @@ export class UpdateAdminUserDto {
 
   @IsOptional()
   @IsArray()
-  @IsIn(ALL_STAFF_PERMISSIONS, { each: true })
-  permissions?: StaffPermission[];
+  @IsIn(ALL_PERMISSIONS, { each: true, message: 'Invalid permission specified' })
+  permissions?: Permission[];
 }

@@ -1,7 +1,8 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { APP_ROUTES } from '@/app.routes';
-import { ResponseMessage, Roles } from '@/common/decorators';
+import { PERMISSIONS } from '@/common/constants/permissions.constant';
+import { RequirePermissions, ResponseMessage, Roles } from '@/common/decorators';
 import { AttributeValueService } from '../services/attribute-value.service';
 import { AssignAttributeValueDto } from '../dto/assign-attribute-value.dto';
 import { ATTRIBUTE_ROUTES } from '../attribute.routes';
@@ -12,6 +13,7 @@ export class ProductAttributeAdminController {
   constructor(private readonly service: AttributeValueService) {}
 
   @Get(ATTRIBUTE_ROUTES.PRODUCT_ASSIGNMENTS.ROOT)
+  @RequirePermissions(PERMISSIONS.CATALOG_READ)
   @ResponseMessage('Product attributes fetched successfully.')
   getAttributes(@Param('productId') productId: string) {
     return this.service.getProductAttributes(productId);
@@ -19,6 +21,7 @@ export class ProductAttributeAdminController {
 
   @Post(ATTRIBUTE_ROUTES.PRODUCT_ASSIGNMENTS.ROOT)
   @HttpCode(HttpStatus.CREATED)
+  @RequirePermissions(PERMISSIONS.CATALOG_WRITE)
   @ResponseMessage('Product attribute assigned successfully.')
   assignAttribute(@Param('productId') productId: string, @Body() dto: AssignAttributeValueDto) {
     return this.service.assignProductAttribute(productId, dto);
@@ -26,6 +29,7 @@ export class ProductAttributeAdminController {
 
   @Delete(ATTRIBUTE_ROUTES.PRODUCT_ASSIGNMENTS.BY_DEFINITION)
   @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermissions(PERMISSIONS.CATALOG_DELETE)
   async removeAttribute(
     @Param('productId') productId: string,
     @Param('definitionId') definitionId: string,

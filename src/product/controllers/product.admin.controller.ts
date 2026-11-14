@@ -1,5 +1,6 @@
 import { APP_ROUTES } from '@/app.routes';
-import { ResponseMessage, Roles } from '@/common/decorators';
+import { PERMISSIONS } from '@/common/constants/permissions.constant';
+import { RequirePermissions, ResponseMessage, Roles } from '@/common/decorators';
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { ProductService } from '../product.service';
@@ -15,18 +16,21 @@ export class ProductAdminController {
   constructor(private readonly service: ProductService) {}
 
   @Get()
+  @RequirePermissions(PERMISSIONS.CATALOG_READ)
   @ResponseMessage('Products fetched successfully.')
   getAll(@Query() query: GetProductsQueryDto) {
     return this.service.getAllProducts(query);
   }
 
   @Get(PRODUCT_ROUTES.STATS)
+  @RequirePermissions(PERMISSIONS.CATALOG_READ)
   @ResponseMessage('Product statistics retrieved successfully.')
   getStats() {
     return this.service.getStats();
   }
 
   @Get(PRODUCT_ROUTES.BY_ID)
+  @RequirePermissions(PERMISSIONS.CATALOG_READ)
   @ResponseMessage('Product fetched successfully.')
   getProductById(@Param('productId') productId: string) {
     return this.service.getProductById(productId);
@@ -35,6 +39,7 @@ export class ProductAdminController {
   @Patch(PRODUCT_ROUTES.BY_ID)
   @HttpCode(200)
   @Roles(UserRole.MASTER, UserRole.ADMIN)
+  @RequirePermissions(PERMISSIONS.CATALOG_WRITE)
   @ResponseMessage('Product updated successfully.')
   update(@Param('productId') productId: string, @Body() dto: UpdateProductDto) {
     return this.service.update(productId, dto);
@@ -43,6 +48,7 @@ export class ProductAdminController {
   @Post()
   @HttpCode(201)
   @Roles(UserRole.MASTER, UserRole.ADMIN)
+  @RequirePermissions(PERMISSIONS.CATALOG_WRITE)
   @ResponseMessage('Product added successfully.')
   create(@Body() dto: CreateProductDto) {
     return this.service.create(dto);
@@ -51,6 +57,7 @@ export class ProductAdminController {
   @Delete()
   @HttpCode(200)
   @Roles(UserRole.MASTER, UserRole.ADMIN)
+  @RequirePermissions(PERMISSIONS.CATALOG_DELETE)
   @ResponseMessage('Products deleted successfully.')
   bulkDelete(@Body() dto: BulkDeleteProductsDto) {
     return this.service.bulkDeleteProducts(dto.productIds);
@@ -59,6 +66,7 @@ export class ProductAdminController {
   @Delete(PRODUCT_ROUTES.BY_ID)
   @HttpCode(200)
   @Roles(UserRole.MASTER, UserRole.ADMIN)
+  @RequirePermissions(PERMISSIONS.CATALOG_DELETE)
   @ResponseMessage('Product deleted successfully.')
   delete(@Param('productId') productId: string) {
     return this.service.delete(productId);

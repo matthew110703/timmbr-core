@@ -13,7 +13,8 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { APP_ROUTES } from '@/app.routes';
-import { ResponseMessage, Roles } from '@/common/decorators';
+import { PERMISSIONS } from '@/common/constants/permissions.constant';
+import { RequirePermissions, ResponseMessage, Roles } from '@/common/decorators';
 import { AttributeDefinitionService } from '../services/attribute-definition.service';
 import { CreateAttributeDefinitionDto } from '../dto/create-attribute-definition.dto';
 import { UpdateAttributeDefinitionDto } from '../dto/update-attribute-definition.dto';
@@ -26,12 +27,14 @@ export class AttributeDefinitionAdminController {
   constructor(private readonly service: AttributeDefinitionService) {}
 
   @Get(ATTRIBUTE_ROUTES.DEFINITIONS.ROOT)
+  @RequirePermissions(PERMISSIONS.CATALOG_READ)
   @ResponseMessage('Attribute definitions fetched successfully.')
   getAll(@Query() query: GetAttributeDefinitionsQueryDto) {
     return this.service.getAll(query);
   }
 
   @Get(ATTRIBUTE_ROUTES.DEFINITIONS.BY_ID)
+  @RequirePermissions(PERMISSIONS.CATALOG_READ)
   @ResponseMessage('Attribute definition fetched successfully.')
   getById(@Param('id') id: string) {
     return this.service.getById(id);
@@ -39,6 +42,7 @@ export class AttributeDefinitionAdminController {
 
   @Post(ATTRIBUTE_ROUTES.DEFINITIONS.ROOT)
   @HttpCode(HttpStatus.CREATED)
+  @RequirePermissions(PERMISSIONS.CATALOG_WRITE)
   @ResponseMessage('Attribute definition created successfully.')
   create(@Body() dto: CreateAttributeDefinitionDto) {
     return this.service.create(dto);
@@ -46,6 +50,7 @@ export class AttributeDefinitionAdminController {
 
   @Patch(ATTRIBUTE_ROUTES.DEFINITIONS.BY_ID)
   @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.CATALOG_WRITE)
   @ResponseMessage('Attribute definition updated successfully.')
   update(@Param('id') id: string, @Body() dto: UpdateAttributeDefinitionDto) {
     return this.service.update(id, dto);
@@ -53,6 +58,7 @@ export class AttributeDefinitionAdminController {
 
   @Put(ATTRIBUTE_ROUTES.DEFINITIONS.BY_ID)
   @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.CATALOG_WRITE)
   @ResponseMessage('Attribute definition updated successfully.')
   updatePut(@Param('id') id: string, @Body() dto: UpdateAttributeDefinitionDto) {
     return this.service.update(id, dto);
@@ -60,6 +66,7 @@ export class AttributeDefinitionAdminController {
 
   @Delete(ATTRIBUTE_ROUTES.DEFINITIONS.BY_ID)
   @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.CATALOG_DELETE)
   @ResponseMessage('Attribute definition deleted successfully.')
   async delete(@Param('id') id: string) {
     await this.service.delete(id);

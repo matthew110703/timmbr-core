@@ -28,6 +28,7 @@ import { LoginPayloadDto } from './dto/login-dto';
 import { OAuthExchangeDto, SendOtpDto, VerifyOtpDto } from './dto/otp.dto';
 import { TrustedClientGuard } from '@/common/guards/trusted-client.guard';
 import {
+  AcceptInviteDto,
   ChangePasswordDto,
   ForgotPasswordDto,
   ResetPasswordDto,
@@ -171,6 +172,15 @@ export class AuthController {
   @ResponseMessage('Password reset successfully.')
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.auth.resetPassword(dto.token, dto.newPassword);
+  }
+
+  @Post(AUTH_ROUTES.ACCEPT_INVITE)
+  @Public()
+  @HttpCode(200)
+  @Throttle(STRICT_THROTTLE)
+  @ResponseMessage('Password set successfully. Please log in with your credentials.')
+  async acceptInvite(@Body() dto: AcceptInviteDto) {
+    await this.auth.acceptInvite(dto.token, dto.password);
   }
 
   @Post(AUTH_ROUTES.CHANGE_PASSWORD)

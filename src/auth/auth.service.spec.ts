@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import { Test } from '@nestjs/testing';
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { OAuthType, UserRole, UserStatus } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { RedisService } from '@/redis/redis.service';
 import { MailerService } from '@/mailer/mailer.service';
+import { TokenType } from './types/token-type.enum';
 import { Application } from '@/common/types/application.types';
 import { TokenRevokedException } from '@/common/exceptions/token.exception';
 import { UserDeactivatedException } from '@/common/exceptions/user.exception';
@@ -33,8 +34,8 @@ const repo = {
   upsertUserProvider: jest.fn(),
   updateUser: jest.fn(),
 };
-const redis = { setWithTTL: jest.fn(), getAndDelete: jest.fn(), get: jest.fn() };
-const mailer = { sendPasswordResetEmail: jest.fn() };
+const redis = { setWithTTL: jest.fn(), getAndDelete: jest.fn(), get: jest.fn(), delete: jest.fn() };
+const mailer = { sendPasswordResetEmail: jest.fn(), sendUserInviteEmail: jest.fn() };
 const otp = { send: jest.fn(), verify: jest.fn() };
 const tokens = { issue: jest.fn(), rotate: jest.fn(), revoke: jest.fn(), revokeAll: jest.fn() };
 
@@ -509,6 +510,95 @@ describe('AuthService', () => {
       mailer.sendPasswordResetEmail.mockRejectedValue(new Error('provider down'));
 
       await expect(service.forgotPassword('dany@example.com')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('issueUserInvite', () => {
+    it('routes STAFF invites to timmbr-companion deep link and revokes previous token', async () => {
+      redis.get.mockResolvedValue('oldhash');
+      mailer.sendUserInviteEmail.mockResolvedValue(undefined);
+
+      await service.issueUserInvite({
+        id: 'u-staff',
+        email: 'staff@timmbr.com',
+        name: 'Arjun',
+        role: UserRole.STAFF,
+      });
+
+      expect(redis.delete).toHaveBeenCalledWith('auth:invite:oldhash');
+      expect(redis.setWithTTL).toHaveBeenCalledWith(
+        expect.stringMatching(/^auth:invite:[0-9a-f]{64}$/),
+        86400,
+        'u-staff',
+      );
+      expect(mailer.sendUserInviteEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'staff@timmbr.com',
+          role: UserRole.STAFF,
+          inviteUrl: expect.stringMatching(
+            /^timmbr-companion:\/\/accept-invite\?token=[0-9a-f]{64}$/,
+          ),
+        }),
+      );
+    });
+
+    it('routes ADMIN invites to Admin Console URL', async () => {
+      redis.get.mockResolvedValue(null);
+      mailer.sendUserInviteEmail.mockResolvedValue(undefined);
+
+      await service.issueUserInvite({
+        id: 'u-admin',
+        email: 'admin@timmbr.com',
+        name: 'Meera',
+        role: UserRole.ADMIN,
+      });
+
+      expect(mailer.sendUserInviteEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          inviteUrl: expect.stringMatching(
+            /^http:\/\/localhost:5000\/accept-invite\?token=[0-9a-f]{64}$/,
+          ),
+        }),
+      );
+    });
+  });
+
+  describe('validateToken INVITE & acceptInvite', () => {
+    it('validates pending invite token when password is null', async () => {
+      redis.get.mockResolvedValue('u-staff');
+      repo.findUserById.mockResolvedValue({ ...baseUser, role: UserRole.STAFF, password: null });
+
+      await expect(service.validateToken('raw-token', TokenType.INVITE)).resolves.toBeUndefined();
+    });
+
+    it('rejects invite token if password is already set', async () => {
+      redis.get.mockResolvedValue('u-staff');
+      repo.findUserById.mockResolvedValue({ ...baseUser, role: UserRole.STAFF, password: 'hash' });
+
+      await expect(service.validateToken('raw-token', TokenType.INVITE)).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('sets hashed password, marks emailVerified, and does not issue tokens', async () => {
+      redis.getAndDelete.mockResolvedValue('u-staff');
+      repo.findUserById.mockResolvedValue({
+        ...baseUser,
+        id: 'u-staff',
+        role: UserRole.STAFF,
+        password: null,
+      });
+
+      const result = await service.acceptInvite('raw-token', 'StrongPass1!');
+
+      expect(result).toBeUndefined();
+      expect(redis.delete).toHaveBeenCalledWith('auth:invite:user:u-staff');
+      expect(repo.updateUser).toHaveBeenCalledWith('u-staff', {
+        password: 'new-hash',
+        emailVerified: true,
+      });
+      expect(tokens.revokeAll).toHaveBeenCalledWith('u-staff');
+      expect(tokens.issue).not.toHaveBeenCalled();
     });
   });
 });

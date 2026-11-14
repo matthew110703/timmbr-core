@@ -46,3 +46,13 @@ export class SetPasswordDto {
   @IsStrongPassword()
   password!: string;
 }
+
+/** Accept an Admin or Staff account invitation and set initial password. */
+export class AcceptInviteDto {
+  @IsString()
+  @IsNotEmpty({ message: 'Token is required' })
+  token!: string;
+
+  @IsStrongPassword()
+  password!: string;
+}

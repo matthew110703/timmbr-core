@@ -1,6 +1,7 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import { ResponseMessage, Roles } from '@/common/decorators';
+import { PERMISSIONS } from '@/common/constants/permissions.constant';
+import { RequirePermissions, ResponseMessage, Roles } from '@/common/decorators';
 import { TRANSACTION_ROUTES } from '../transaction.routes';
 import { TransactionAdminService } from '../services/transaction.admin.service';
 import { GetTransactionsQueryDto } from '../dto/get-transactions-query.dto';
@@ -13,6 +14,7 @@ export class TransactionAdminController {
   constructor(private readonly transactionAdminService: TransactionAdminService) {}
 
   @Get()
+  @RequirePermissions(PERMISSIONS.TRANSACTIONS_READ)
   @ResponseMessage('Transactions fetched successfully.')
   async getAll(
     @Query() query: GetTransactionsQueryDto,

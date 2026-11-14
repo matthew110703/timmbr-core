@@ -10,8 +10,7 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { UserRole } from '@prisma/client';
-import { IsStrongPassword } from '@/auth/dto/password-policy';
-import { ALL_STAFF_PERMISSIONS, StaffPermission } from '@/common/constants/permissions.constant';
+import { ALL_PERMISSIONS, Permission } from '@/common/constants/permissions.constant';
 
 export class CreateAdminUserDto {
   @IsString({ message: 'Name must be a string' })
@@ -25,9 +24,6 @@ export class CreateAdminUserDto {
   @IsNotEmpty({ message: 'Email is required' })
   email!: string;
 
-  @IsStrongPassword()
-  password!: string;
-
   @IsOptional()
   @IsIn([UserRole.ADMIN, UserRole.STAFF], {
     message: 'Role must be ADMIN or STAFF',
@@ -36,6 +32,6 @@ export class CreateAdminUserDto {
 
   @IsOptional()
   @IsArray()
-  @IsIn(ALL_STAFF_PERMISSIONS, { each: true })
-  permissions?: StaffPermission[];
+  @IsIn(ALL_PERMISSIONS, { each: true, message: 'Invalid permission specified' })
+  permissions?: Permission[];
 }

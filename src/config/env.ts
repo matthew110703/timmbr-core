@@ -26,6 +26,10 @@ export function parseOrigins(list?: string): string[] {
 export const appUrls = {
   /** OAuth popups land on `${storefront}/oauth/callback`. */
   storefront: parseOrigins(env.STOREFRONT_ORIGIN)[0] ?? 'http://localhost:3000',
-  /** Password-reset emails link to `${adminConsole}/reset-password`. */
+  /** Password-reset & Admin invite emails link to `${adminConsole}/...`. */
   adminConsole: parseOrigins(env.ADMIN_CONSOLE_ORIGIN)[0] ?? 'http://localhost:5000',
+  /** Staff invite emails deep-link to `${staffCompanion}accept-invite`. */
+  staffCompanion: env.STAFF_COMPANION_URL.trim().endsWith('://')
+    ? env.STAFF_COMPANION_URL.trim()
+    : env.STAFF_COMPANION_URL.trim().replace(/\/+$/, ''),
 };

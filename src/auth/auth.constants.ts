@@ -31,4 +31,7 @@ export const OAUTH_BIND_HASH_RE = /^[0-9a-f]{64}$/;
 /** Password-reset link lifetime (admin console flow). */
 export const PASSWORD_RESET_TTL_S = 15 * 60;
 
+/** Staff/Admin account invitation link lifetime (24 hours). */
+export const INVITE_TTL_S = 24 * 60 * 60;
+
 export type OtpIntent = 'login' | 'reset';

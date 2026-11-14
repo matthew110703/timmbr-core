@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserRole, UserStatus } from '@prisma/client';
+import { JwtPayload } from '@/auth/types/jwt.types';
 import { UserAdminController } from './user.admin.controller';
 import { UserAdminService } from '../services/user.admin.service';
 import { GetAdminUsersQueryDto } from '../dto/get-admin-users-query.dto';
@@ -8,12 +9,20 @@ import { UpdateAdminUserDto } from '../dto/update-admin-user.dto';
 
 const USER_ID = '11111111-1111-1111-1111-111111111111';
 
+const mockCaller: JwtPayload = {
+  sub: '99999999-9999-9999-9999-999999999999',
+  email: 'master@example.com',
+  role: UserRole.MASTER,
+  permissions: [],
+};
+
 const mockUserAdminService = {
   getAll: jest.fn(),
   getStaffList: jest.fn(),
   getOne: jest.fn(),
   update: jest.fn(),
   create: jest.fn(),
+  resendInvite: jest.fn(),
 };
 
 const mockAdminUserResponse = {
@@ -106,30 +115,39 @@ describe('UserAdminController', () => {
   });
 
   describe('update', () => {
-    it('delegates to service.update', async () => {
+    it('delegates to service.update with caller', async () => {
       const dto: UpdateAdminUserDto = { status: UserStatus.DELETED };
       mockUserAdminService.update.mockResolvedValue(mockAdminUserResponse);
 
-      const result = await controller.update(USER_ID, dto);
+      const result = await controller.update(mockCaller, USER_ID, dto);
 
-      expect(mockUserAdminService.update).toHaveBeenCalledWith(USER_ID, dto);
+      expect(mockUserAdminService.update).toHaveBeenCalledWith(mockCaller, USER_ID, dto);
       expect(result).toBe(mockAdminUserResponse);
     });
   });
 
   describe('create', () => {
-    it('delegates to service.create', async () => {
+    it('delegates to service.create with caller', async () => {
       const dto: CreateAdminUserDto = {
         name: 'New Admin',
         email: 'newadmin@example.com',
-        password: 'Password123!',
       };
       mockUserAdminService.create.mockResolvedValue(mockAdminUserResponse);
 
-      const result = await controller.create(dto);
+      const result = await controller.create(mockCaller, dto);
 
-      expect(mockUserAdminService.create).toHaveBeenCalledWith(dto);
+      expect(mockUserAdminService.create).toHaveBeenCalledWith(mockCaller, dto);
       expect(result).toBe(mockAdminUserResponse);
+    });
+  });
+
+  describe('resendInvite', () => {
+    it('delegates to service.resendInvite with caller and userId', async () => {
+      mockUserAdminService.resendInvite.mockResolvedValue(undefined);
+
+      await controller.resendInvite(mockCaller, USER_ID);
+
+      expect(mockUserAdminService.resendInvite).toHaveBeenCalledWith(mockCaller, USER_ID);
     });
   });
 });

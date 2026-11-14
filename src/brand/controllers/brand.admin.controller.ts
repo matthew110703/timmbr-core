@@ -1,5 +1,6 @@
 import { APP_ROUTES } from '@/app.routes';
-import { ResponseMessage, Roles } from '@/common/decorators';
+import { PERMISSIONS } from '@/common/constants/permissions.constant';
+import { RequirePermissions, ResponseMessage, Roles } from '@/common/decorators';
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { BrandService } from '../brand.service';
@@ -14,12 +15,14 @@ export class BrandAdminController {
   constructor(private readonly service: BrandService) {}
 
   @Get()
+  @RequirePermissions(PERMISSIONS.CATALOG_READ)
   @ResponseMessage('Brands fetched successfully.')
   getAll(@Query() query: GetBrandsQueryDto) {
     return this.service.getAllBrands(query);
   }
 
   @Get(BRAND_ROUTES.BY_ID)
+  @RequirePermissions(PERMISSIONS.CATALOG_READ)
   @ResponseMessage('Brand fetched successfully.')
   getBrandById(@Param('brandId') brandId: string) {
     return this.service.getBrandById(brandId);
@@ -28,6 +31,7 @@ export class BrandAdminController {
   @Patch(BRAND_ROUTES.BY_ID)
   @HttpCode(200)
   @Roles(UserRole.MASTER, UserRole.ADMIN)
+  @RequirePermissions(PERMISSIONS.CATALOG_WRITE)
   @ResponseMessage('Brand updated successfully.')
   update(@Param('brandId') brandId: string, @Body() dto: UpdateBrandDto) {
     return this.service.update(brandId, dto);
@@ -36,6 +40,7 @@ export class BrandAdminController {
   @Post()
   @HttpCode(201)
   @Roles(UserRole.MASTER, UserRole.ADMIN)
+  @RequirePermissions(PERMISSIONS.CATALOG_WRITE)
   @ResponseMessage('Brand added successfully.')
   create(@Body() dto: CreateBrandDto) {
     return this.service.create(dto);
@@ -44,6 +49,7 @@ export class BrandAdminController {
   @Delete(BRAND_ROUTES.BY_ID)
   @HttpCode(200)
   @Roles(UserRole.MASTER, UserRole.ADMIN)
+  @RequirePermissions(PERMISSIONS.CATALOG_DELETE)
   @ResponseMessage('Brand deleted successfully.')
   delete(@Param('brandId') brandId: string) {
     return this.service.delete(brandId);

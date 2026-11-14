@@ -23,6 +23,7 @@ export const envSchema = z
     // (storefront: OAuth popup landing; admin console: password-reset links).
     STOREFRONT_ORIGIN: z.string().default('http://localhost:3000'),
     ADMIN_CONSOLE_ORIGIN: z.string().default('http://localhost:5000'),
+    STAFF_COMPANION_URL: z.string().default('timmbr-companion://'),
     // Extra CORS origins beyond the two apps above (optional).
     ALLOWED_ORIGIN: z.string().optional(),
     JWT_ACCESS_SECRET: z.string(),

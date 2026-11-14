@@ -8,6 +8,7 @@ export const AUTH_ROUTES = {
   RESET_PASSWORD: 'reset-password',
   CHANGE_PASSWORD: 'change-password',
   PASSWORD_SET: 'password/set',
+  ACCEPT_INVITE: 'accept-invite',
   GOOGLE: 'google',
   GOOGLE_CALLBACK: 'google/callback',
   OAUTH_EXCHANGE: 'oauth/exchange',

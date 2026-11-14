@@ -5,6 +5,7 @@ export * from './skip-transform.decorator';
 export * from './is-currency-code.decorator';
 export * from './is-compare-at-price-valid.decorator';
 export * from './current-application.decorator';
+export * from './current-user.decorator';
 export * from './optional-auth.decorator';
 export * from './trusted-unthrottled.decorator';
 export * from './permissions.decorator';

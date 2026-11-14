@@ -5,6 +5,7 @@ import type { Transporter } from 'nodemailer';
 import { env } from '@/config/env';
 import { OTP_TTL_S } from '@/auth/auth.constants';
 import { resetPasswordEmailTemplate } from './templates/reset-password-email.template';
+import { inviteUserEmailTemplate } from './templates/invite-user-email.template';
 import { otpEmailTemplate } from './templates/otp-email.template';
 import {
   invoiceEmailTemplate,
@@ -121,6 +122,21 @@ export class MailerService {
       to,
       subject: 'Reset your Timmbr password',
       html: resetPasswordEmailTemplate(firstName, resetUrl),
+    });
+  }
+
+  async sendUserInviteEmail(options: {
+    to: string;
+    name: string;
+    role: string;
+    inviteUrl: string;
+  }): Promise<void> {
+    const firstName = options.name ? options.name.split(' ')[0] : 'there';
+
+    await this.dispatchEmail({
+      to: options.to,
+      subject: "You're invited to join Timmbr",
+      html: inviteUserEmailTemplate(firstName, options.role, options.inviteUrl),
     });
   }
 

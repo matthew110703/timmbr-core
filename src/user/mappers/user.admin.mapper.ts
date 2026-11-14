@@ -12,6 +12,7 @@ export class AdminUserMapper {
       permissions: user.permissions ?? [],
       status: user.status,
       emailVerified: user.emailVerified,
+      hasPassword: user.password !== null,
       linkedProviders: user.providers.map((p) => p.type),
       lastLoginAt: user.lastLoginAt ?? null,
       createdAt: user.createdAt,
@@ -27,6 +28,7 @@ export class AdminUserMapper {
       role: user.role,
       permissions: user.permissions ?? [],
       status: user.status,
+      hasPassword: user.password !== null,
       createdAt: user.createdAt,
     };
   }

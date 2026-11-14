@@ -1,5 +1,6 @@
 import { APP_ROUTES } from '@/app.routes';
-import { ResponseMessage, Roles } from '@/common/decorators';
+import { PERMISSIONS } from '@/common/constants/permissions.constant';
+import { RequirePermissions, ResponseMessage, Roles } from '@/common/decorators';
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { ProductImageService } from '../product-image.service';
@@ -16,6 +17,7 @@ export class ProductImageAdminController {
 
   @Post(PRODUCT_IMAGE_ROUTES.PRESIGN)
   @HttpCode(200)
+  @RequirePermissions(PERMISSIONS.CATALOG_WRITE)
   @ResponseMessage('Presigned upload URL(s) generated successfully.')
   presign(@Param('productId') productId: string, @Body() dto: PresignProductImagesDto) {
     return this.service.presignUploadUrls(productId, dto);
@@ -23,12 +25,14 @@ export class ProductImageAdminController {
 
   @Post(PRODUCT_IMAGE_ROUTES.BASE)
   @HttpCode(201)
+  @RequirePermissions(PERMISSIONS.CATALOG_WRITE)
   @ResponseMessage('Product images registered successfully.')
   create(@Param('productId') productId: string, @Body() dto: CreateProductImagesDto) {
     return this.service.registerImages(productId, dto);
   }
 
   @Get(PRODUCT_IMAGE_ROUTES.BASE)
+  @RequirePermissions(PERMISSIONS.CATALOG_READ)
   @ResponseMessage('Product images fetched successfully.')
   getAll(@Param('productId') productId: string, @Query() query: GetProductImagesQueryDto) {
     return this.service.getImages(productId, query);
@@ -36,6 +40,7 @@ export class ProductImageAdminController {
 
   @Patch(PRODUCT_IMAGE_ROUTES.PRIMARY)
   @HttpCode(200)
+  @RequirePermissions(PERMISSIONS.CATALOG_WRITE)
   @ResponseMessage('Primary product image updated successfully.')
   setPrimary(@Param('productId') productId: string, @Param('imageId') imageId: string) {
     return this.service.setPrimaryImage(productId, imageId);
@@ -43,6 +48,7 @@ export class ProductImageAdminController {
 
   @Delete(PRODUCT_IMAGE_ROUTES.BASE)
   @HttpCode(200)
+  @RequirePermissions(PERMISSIONS.CATALOG_WRITE)
   @ResponseMessage('Product images deleted successfully.')
   delete(@Param('productId') productId: string, @Body() dto: DeleteProductImagesDto) {
     return this.service.deleteImages(productId, dto);

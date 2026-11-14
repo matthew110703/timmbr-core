@@ -30,6 +30,7 @@ import { TokenPair, TokenService } from './token/token.service';
 import { TokenType } from './types/token-type.enum';
 import { LoginPayloadDto } from './dto/login-dto';
 import {
+  INVITE_TTL_S,
   OAUTH_EXCHANGE_CODE_TTL_S,
   OtpIntent,
   PASSWORD_RESET_TTL_S,
@@ -305,16 +306,94 @@ export class AuthService {
   }
 
   async validateToken(token: string, type: TokenType): Promise<void> {
-    const keyMap: Record<TokenType, string> = {
-      [TokenType.RESET_PASSWORD]: `pwd:reset:${token}`,
-    };
+    if (type === TokenType.RESET_PASSWORD) {
+      if (!(await this.redis.get(`pwd:reset:${token}`))) {
+        throw new UnauthorizedException({
+          message: 'Token is invalid or has expired.',
+          code: 'TOKEN_INVALID',
+        });
+      }
+      return;
+    }
 
-    if (!(await this.redis.get(keyMap[type]))) {
+    if (type === TokenType.INVITE) {
+      const userId = await this.redis.get(this.inviteTokenKey(this.hashInviteToken(token)));
+      const user = userId ? await this.authRepository.findUserById(userId) : null;
+      if (
+        !user ||
+        user.status !== UserStatus.ACTIVE ||
+        (user.role !== UserRole.ADMIN && user.role !== UserRole.STAFF) ||
+        user.password !== null
+      ) {
+        throw new UnauthorizedException({
+          message: 'Token is invalid or has expired.',
+          code: 'TOKEN_INVALID',
+        });
+      }
+      return;
+    }
+
+    throw new UnauthorizedException({
+      message: 'Token is invalid or has expired.',
+      code: 'TOKEN_INVALID',
+    });
+  }
+
+  // ─── Admin & Staff Invitation Onboarding ─────────────────────────────────────
+
+  async issueUserInvite(user: Pick<User, 'id' | 'email' | 'name' | 'role'>): Promise<void> {
+    const token = crypto.randomBytes(32).toString('hex');
+    const hash = this.hashInviteToken(token);
+
+    const previousHash = await this.redis.get(this.inviteUserKey(user.id));
+    if (previousHash) {
+      await this.redis.delete(this.inviteTokenKey(previousHash));
+    }
+
+    await this.redis.setWithTTL(this.inviteTokenKey(hash), INVITE_TTL_S, user.id);
+    await this.redis.setWithTTL(this.inviteUserKey(user.id), INVITE_TTL_S, hash);
+
+    const companionBase = appUrls.staffCompanion.endsWith('://')
+      ? appUrls.staffCompanion
+      : `${appUrls.staffCompanion}/`;
+    const inviteUrl =
+      user.role === UserRole.STAFF
+        ? `${companionBase}accept-invite?token=${token}`
+        : `${appUrls.adminConsole}/accept-invite?token=${token}`;
+
+    await this.mailer.sendUserInviteEmail({
+      to: user.email,
+      name: user.name,
+      role: user.role,
+      inviteUrl,
+    });
+  }
+
+  async acceptInvite(token: string, password: string): Promise<void> {
+    const userId = await this.redis.getAndDelete(this.inviteTokenKey(this.hashInviteToken(token)));
+    if (userId) {
+      await this.redis.delete(this.inviteUserKey(userId));
+    }
+
+    const user = userId ? await this.authRepository.findUserById(userId) : null;
+    if (
+      !user ||
+      user.status !== UserStatus.ACTIVE ||
+      (user.role !== UserRole.ADMIN && user.role !== UserRole.STAFF) ||
+      user.password !== null
+    ) {
       throw new UnauthorizedException({
         message: 'Token is invalid or has expired.',
         code: 'TOKEN_INVALID',
       });
     }
+
+    await this.authRepository.updateUser(user.id, {
+      password: await argon2.hash(password),
+      emailVerified: true,
+    });
+
+    await this.tokens.revokeAll(user.id);
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
@@ -398,5 +477,17 @@ export class AuthService {
 
   private passwordSetupKey(token: string) {
     return `auth:pwdsetup:${crypto.createHash('sha256').update(token).digest('hex')}`;
+  }
+
+  private hashInviteToken(token: string) {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  private inviteTokenKey(hash: string) {
+    return `auth:invite:${hash}`;
+  }
+
+  private inviteUserKey(userId: string) {
+    return `auth:invite:user:${userId}`;
   }
 }

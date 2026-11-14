@@ -9,6 +9,7 @@ export class AdminUserResponseDto {
   permissions!: string[];
   status!: UserStatus;
   emailVerified!: boolean;
+  hasPassword!: boolean;
   linkedProviders!: OAuthType[];
   lastLoginAt!: Date | null;
   createdAt!: Date;
@@ -22,5 +23,6 @@ export class AdminCreateUserResponseDto {
   role!: UserRole;
   permissions!: string[];
   status!: UserStatus;
+  hasPassword!: boolean;
   createdAt!: Date;
 }
