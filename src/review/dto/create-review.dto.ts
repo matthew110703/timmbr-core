@@ -24,7 +24,7 @@ export class CreateReviewDto {
 
   @IsOptional()
   @IsString({ message: 'Comment must be a string.' })
-  @MaxLength(REVIEW_CONSTANTS.COMMENT_MAX_LENGTH, {
+  @MaxLength(REVIEW_CONSTANTS.COMMENT_MAX_HTML_LENGTH, {
     message: `Comment must be at most ${REVIEW_CONSTANTS.COMMENT_MAX_LENGTH} characters.`,
   })
   comment?: string;

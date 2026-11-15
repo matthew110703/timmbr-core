@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { PaginationDto } from '@/common/dto/pagination.dto';
 
@@ -23,12 +23,12 @@ export class GetProductReviewsQueryDto extends PaginationDto {
   rating?: number;
 
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }: { value: unknown }) => value === 'true' || value === true)
   @IsBoolean({ message: 'hasImages must be a boolean.' })
   hasImages?: boolean;
 
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }: { value: unknown }) => value === 'true' || value === true)
   @IsBoolean({ message: 'hasVideos must be a boolean.' })
   hasVideos?: boolean;
 }

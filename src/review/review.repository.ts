@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  OrderStatus,
   Prisma,
   Review,
   ReviewMedia,
@@ -23,10 +24,25 @@ const reviewWithRelations = {
     take: 1,
     include: { media: { orderBy: { sortOrder: 'asc' as const } } },
   },
+  user: { select: { id: true, name: true } },
+  product: {
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      images: { take: 1, orderBy: { sortOrder: 'asc' as const }, select: { storageKey: true } },
+    },
+  },
+  moderationEvents: {
+    orderBy: { createdAt: 'desc' as const },
+    take: 1,
+    select: { action: true, reason: true, createdAt: true },
+  },
 } satisfies Prisma.ReviewInclude;
 
 const publicReviewInclude = {
   media: liveMediaInclude,
+  user: { select: { name: true } },
 } satisfies Prisma.ReviewInclude;
 
 export type PublicReviewRow = Prisma.ReviewGetPayload<{ include: typeof publicReviewInclude }>;
@@ -43,6 +59,14 @@ export const reviewIdLiteSelect = {
 export type ReviewIdLite = Prisma.ReviewGetPayload<{ select: typeof reviewIdLiteSelect }>;
 
 export type ReviewWithRelations = Prisma.ReviewGetPayload<{ include: typeof reviewWithRelations }>;
+
+const moderationEventInclude = {
+  actor: { select: { id: true, name: true } },
+} satisfies Prisma.ReviewModerationEventInclude;
+
+export type ModerationEventWithActor = Prisma.ReviewModerationEventGetPayload<{
+  include: typeof moderationEventInclude;
+}>;
 
 @Injectable()
 export class ReviewRepository {
@@ -106,24 +130,18 @@ export class ReviewRepository {
       hasVideos?: boolean;
     },
   ): Promise<[PublicReviewRow[], number]> {
+    // Media filters go through AND: two `media` keys in one object would overwrite each other.
+    const mediaFilters: Prisma.ReviewWhereInput[] = [];
+    if (query.hasImages)
+      mediaFilters.push({ media: { some: { revisionId: null, kind: 'IMAGE' } } });
+    if (query.hasVideos)
+      mediaFilters.push({ media: { some: { revisionId: null, kind: 'VIDEO' } } });
+
     const where: Prisma.ReviewWhereInput = {
       productId,
       status: ReviewStatus.PUBLISHED,
       ...(query.rating !== undefined ? { rating: query.rating } : {}),
-      ...(query.hasImages
-        ? {
-            media: {
-              some: { revisionId: null, kind: 'IMAGE' },
-            },
-          }
-        : {}),
-      ...(query.hasVideos
-        ? {
-            media: {
-              some: { revisionId: null, kind: 'VIDEO' },
-            },
-          }
-        : {}),
+      ...(mediaFilters.length > 0 ? { AND: mediaFilters } : {}),
     };
 
     const orderBy = this.publicSortOrder(query.sortBy);
@@ -161,21 +179,124 @@ export class ReviewRepository {
     where: Prisma.ReviewWhereInput,
     page: number,
     limit: number,
+    orderBy: Prisma.ReviewOrderByWithRelationInput[],
   ): Promise<[ReviewWithRelations[], number]> {
     return this.prisma.$transaction([
       this.prisma.review.findMany({
         where,
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         include: reviewWithRelations,
       }),
       this.prisma.review.count({ where }),
     ]);
   }
 
+  async countByStatus(
+    where: Prisma.ReviewWhereInput,
+  ): Promise<Partial<Record<ReviewStatus, number>>> {
+    const groups = await this.prisma.review.groupBy({
+      by: ['status'],
+      where,
+      _count: { _all: true },
+    });
+    return Object.fromEntries(groups.map((g) => [g.status, g._count._all]));
+  }
+
+  /** Distinct storage keys (originals and thumbnails) across live and revision media. */
+  async findMediaStorageKeys(reviewId: string): Promise<string[]> {
+    const rows = await this.prisma.reviewMedia.findMany({
+      where: { reviewId },
+      select: { storageKey: true, thumbnailStorageKey: true },
+    });
+    const keys = new Set<string>();
+    for (const row of rows) {
+      keys.add(row.storageKey);
+      if (row.thumbnailStorageKey) keys.add(row.thumbnailStorageKey);
+    }
+    return [...keys];
+  }
+
   async createRevision(data: Prisma.ReviewRevisionUncheckedCreateInput) {
     return this.prisma.reviewRevision.create({ data });
+  }
+
+  async cloneLiveMediaToRevision(
+    reviewId: string,
+    revisionId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const live = await client.reviewMedia.findMany({
+      where: { reviewId, revisionId: null },
+      orderBy: { sortOrder: 'asc' },
+    });
+    if (live.length === 0) return;
+    await client.reviewMedia.createMany({
+      data: live.map((m) => ({
+        reviewId,
+        revisionId,
+        storageKey: m.storageKey,
+        thumbnailStorageKey: m.thumbnailStorageKey,
+        kind: m.kind,
+        mimeType: m.mimeType,
+        sizeBytes: m.sizeBytes,
+        sortOrder: m.sortOrder,
+      })),
+    });
+  }
+
+  async hasPendingRevision(reviewId: string): Promise<boolean> {
+    const row = await this.prisma.reviewRevision.findFirst({
+      where: { reviewId, status: ReviewRevisionStatus.PENDING },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
+  async findHelpfulVoteReviewIds(userId: string, reviewIds: string[]): Promise<Set<string>> {
+    if (reviewIds.length === 0) return new Set();
+    const rows = await this.prisma.reviewHelpfulVote.findMany({
+      where: { userId, reviewId: { in: reviewIds } },
+      select: { reviewId: true },
+    });
+    return new Set(rows.map((r) => r.reviewId));
+  }
+
+  async findDeliveredOrderOptionsForProduct(userId: string, productId: string) {
+    const items = await this.prisma.orderItem.findMany({
+      where: {
+        productId,
+        order: { userId, status: OrderStatus.DELIVERED },
+      },
+      select: {
+        orderId: true,
+        order: { select: { placedAt: true, createdAt: true } },
+      },
+    });
+    const seen = new Set<string>();
+    const options: { orderId: string; placedAt: Date }[] = [];
+    for (const item of items) {
+      if (seen.has(item.orderId)) continue;
+      seen.add(item.orderId);
+      options.push({
+        orderId: item.orderId,
+        placedAt: item.order.placedAt ?? item.order.createdAt,
+      });
+    }
+    options.sort((a, b) => b.placedAt.getTime() - a.placedAt.getTime());
+
+    const reviews = await this.prisma.review.findMany({
+      where: { userId, productId, orderId: { in: options.map((o) => o.orderId) } },
+      select: { id: true, orderId: true },
+    });
+    const reviewByOrder = new Map(reviews.map((r) => [r.orderId, r.id]));
+
+    return options.map((o) => ({
+      orderId: o.orderId,
+      placedAt: o.placedAt,
+      existingReviewId: reviewByOrder.get(o.orderId) ?? null,
+    }));
   }
 
   async findRevisionById(id: string) {
@@ -270,10 +391,11 @@ export class ReviewRepository {
     return this.prisma.reviewModerationEvent.create({ data });
   }
 
-  async listModerationEvents(reviewId: string): Promise<ReviewModerationEvent[]> {
+  async listModerationEvents(reviewId: string): Promise<ModerationEventWithActor[]> {
     return this.prisma.reviewModerationEvent.findMany({
       where: { reviewId },
       orderBy: { createdAt: 'desc' },
+      include: moderationEventInclude,
     });
   }
 

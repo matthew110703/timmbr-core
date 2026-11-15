@@ -42,7 +42,7 @@ export class ReviewController {
   @ResponseMessage('Review eligibility checked successfully.')
   eligibility(@Req() req: FastifyRequest, @Query() query: GetReviewEligibilityQueryDto) {
     const { sub } = this.user(req);
-    return this.reviewService.getEligibility(sub, query.orderId, query.productId);
+    return this.reviewService.getEligibility(sub, query);
   }
 
   @Get('me')
@@ -82,6 +82,15 @@ export class ReviewController {
   ) {
     const { sub } = this.user(req);
     return this.reviewService.update(sub, reviewId, dto);
+  }
+
+  @Delete(REVIEW_ROUTES.BY_ID)
+  @Roles(UserRole.USER)
+  @Throttle(REVIEW_WRITE_THROTTLE)
+  @ResponseMessage('Review deleted successfully.')
+  remove(@Req() req: FastifyRequest, @Param('reviewId') reviewId: string) {
+    const { sub } = this.user(req);
+    return this.reviewService.remove(sub, reviewId);
   }
 
   @Post(REVIEW_ROUTES.HELPFUL)

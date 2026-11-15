@@ -10,6 +10,7 @@ export const REVIEW_ROUTES = {
   MEDIA_REORDER: ':reviewId/media/reorder',
   MEDIA_ITEM: ':reviewId/media/:mediaId',
   ADMIN_REVIEWS: 'admin/reviews',
+  ADMIN_COUNTS: 'counts',
   ADMIN_BY_ID: ':reviewId',
   ADMIN_APPROVE: ':reviewId/approve',
   ADMIN_REJECT: ':reviewId/reject',

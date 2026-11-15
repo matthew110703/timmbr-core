@@ -1,6 +1,8 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query, Req } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import { APP_ROUTES } from '@/app.routes';
-import { Public, ResponseMessage } from '@/common/decorators';
+import { OptionalAuth, Public, ResponseMessage } from '@/common/decorators';
+import { JwtPayload } from '@/auth/types/jwt.types';
 import { ReviewService } from '../review.service';
 import { GetProductReviewsQueryDto } from '../dto/get-product-reviews-query.dto';
 
@@ -9,10 +11,15 @@ export class ReviewProductController {
   constructor(private readonly reviewService: ReviewService) {}
 
   @Get()
-  @Public()
+  @OptionalAuth()
   @ResponseMessage('Product reviews fetched successfully.')
-  list(@Param('productId') productId: string, @Query() query: GetProductReviewsQueryDto) {
-    return this.reviewService.listPublicForProduct(productId, query);
+  list(
+    @Req() req: FastifyRequest,
+    @Param('productId') productId: string,
+    @Query() query: GetProductReviewsQueryDto,
+  ) {
+    const user = req.user as JwtPayload | undefined;
+    return this.reviewService.listPublicForProduct(productId, query, user?.sub);
   }
 
   @Get('summary')

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import {
   OrderStatus,
   ReviewModerationAction,
@@ -14,16 +14,20 @@ import {
   ReviewInvalidTransitionException,
   ReviewNotEligibleException,
   ReviewNotFoundException,
-  ReviewPendingRevisionExistsException,
   ReviewRevisionNotFoundException,
 } from '@/common/exceptions/review.exception';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
 import { GetProductReviewsQueryDto, ReviewPublicSortBy } from './dto/get-product-reviews-query.dto';
+import { GetReviewEligibilityQueryDto } from './dto/get-eligibility-query.dto';
 import { ReviewEligibilityResponseDto } from './dto/review-eligibility-response.dto';
 import { ProductReviewSummaryResponseDto, ReviewResponseDto } from './dto/review-response.dto';
 import { AdminReviewModerationDto } from './dto/admin-moderation.dto';
-import { GetAdminReviewsQueryDto } from './dto/get-admin-reviews-query.dto';
+import {
+  AdminReviewCountsResponseDto,
+  AdminReviewSortBy,
+  GetAdminReviewsQueryDto,
+} from './dto/get-admin-reviews-query.dto';
 import { ReviewModerationEventResponseDto } from './dto/review-moderation-event-response.dto';
 import { ReviewAggregateService } from './review-aggregate.service';
 import { ReviewRepository } from './review.repository';
@@ -37,8 +41,12 @@ import {
 } from '@/common/exceptions/review.exception';
 import { Prisma } from '@prisma/client';
 
+const ADMIN_VIEW = { includeAllMedia: true, includeProduct: true, includeReviewer: true } as const;
+
 @Injectable()
 export class ReviewService {
+  private readonly logger = new Logger(ReviewService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly repository: ReviewRepository,
@@ -50,16 +58,25 @@ export class ReviewService {
 
   async getEligibility(
     userId: string,
-    orderId: string,
-    productId: string,
+    query: GetReviewEligibilityQueryDto,
   ): Promise<ReviewEligibilityResponseDto> {
-    const eligible = await this.checkEligibility(userId, orderId, productId);
-    const existing = await this.repository.findByOrderAndProduct(orderId, productId);
+    const { productId, orderId } = query;
+    if (orderId) {
+      const eligible = await this.checkEligibility(userId, orderId, productId);
+      const existing = await this.repository.findByOrderAndProduct(orderId, productId);
+      return {
+        eligible,
+        productId,
+        orderId,
+        existingReviewId: existing?.id ?? null,
+      };
+    }
+
+    const orders = await this.repository.findDeliveredOrderOptionsForProduct(userId, productId);
     return {
-      eligible,
-      orderId,
+      eligible: orders.some((o) => !o.existingReviewId),
       productId,
-      existingReviewId: existing?.id ?? null,
+      orders,
     };
   }
 
@@ -88,7 +105,10 @@ export class ReviewService {
       await this.aggregateService.refreshProductRatings(dto.productId);
     }
 
-    return ReviewMapper.toResponse(review, this.resolveUrl, { viewerUserId: userId });
+    return ReviewMapper.toResponse(review, this.resolveUrl, {
+      viewerUserId: userId,
+      includeProduct: true,
+    });
   }
 
   async update(userId: string, reviewId: string, dto: UpdateReviewDto): Promise<ReviewResponseDto> {
@@ -106,18 +126,33 @@ export class ReviewService {
 
     if (review.status === ReviewStatus.PUBLISHED && needsModeration) {
       const pending = review.revisions.find((r) => r.status === ReviewRevisionStatus.PENDING);
-      if (pending) throw new ReviewPendingRevisionExistsException();
-
-      await this.repository.createRevision({
-        reviewId: review.id,
-        rating: nextRating,
-        title: nextTitle,
-        comment: nextComment,
-        status: ReviewRevisionStatus.PENDING,
-      });
+      if (pending) {
+        await this.repository.updateRevision(pending.id, {
+          rating: nextRating,
+          title: nextTitle,
+          comment: nextComment,
+        });
+      } else {
+        const created = await this.repository.createRevision({
+          reviewId: review.id,
+          rating: nextRating,
+          title: nextTitle,
+          comment: nextComment,
+          status: ReviewRevisionStatus.PENDING,
+        });
+        await this.repository.cloneLiveMediaToRevision(review.id, created.id);
+      }
       const refreshed = await this.repository.findById(review.id);
       if (!refreshed) throw new ReviewNotFoundException();
-      return ReviewMapper.toResponse(refreshed, this.resolveUrl, { viewerUserId: userId });
+      return ReviewMapper.toResponse(refreshed, this.resolveUrl, {
+        viewerUserId: userId,
+        includeProduct: true,
+      });
+    }
+
+    // A clean edit supersedes any held revision: drop it and apply this edit, never the held text.
+    if (review.revisions.some((r) => r.status === ReviewRevisionStatus.PENDING)) {
+      await this.repository.deleteRevisionsForReview(review.id, ReviewRevisionStatus.PENDING);
     }
 
     let nextStatus = review.status;
@@ -139,12 +174,37 @@ export class ReviewService {
       await this.aggregateService.refreshProductRatings(review.productId);
     }
 
-    return ReviewMapper.toResponse(updated, this.resolveUrl, { viewerUserId: userId });
+    return ReviewMapper.toResponse(updated, this.resolveUrl, {
+      viewerUserId: userId,
+      includeProduct: true,
+    });
+  }
+
+  async remove(userId: string, reviewId: string): Promise<{ deleted: true }> {
+    const review = await this.findOwned(userId, reviewId);
+    const keys = await this.repository.findMediaStorageKeys(review.id);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.review.delete({ where: { id: review.id } });
+      if (review.status === ReviewStatus.PUBLISHED) {
+        await this.aggregateService.refreshProductRatings(review.productId, tx);
+      }
+    });
+
+    for (const key of keys) {
+      try {
+        await this.mediaService.delete(key);
+      } catch {
+        this.logger.warn(`Failed to delete review media object ${key}`);
+      }
+    }
+    return { deleted: true };
   }
 
   async listPublicForProduct(
     productId: string,
     query: GetProductReviewsQueryDto,
+    viewerUserId?: string,
   ): Promise<PaginatedResult<ReviewResponseDto>> {
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
@@ -165,8 +225,22 @@ export class ReviewService {
       hasVideos: query.hasVideos,
     });
 
+    const voted =
+      viewerUserId !== undefined
+        ? await this.repository.findHelpfulVoteReviewIds(
+            viewerUserId,
+            rows.map((r) => r.id),
+          )
+        : new Set<string>();
+
     return {
-      data: rows.map((r) => ReviewMapper.toResponse(r, this.resolveUrl)),
+      data: rows.map((r) =>
+        ReviewMapper.toResponse(r, this.resolveUrl, {
+          viewerUserId,
+          votedByViewer: viewerUserId ? voted.has(r.id) : false,
+          publicAudience: true,
+        }),
+      ),
       meta: {
         page,
         limit,
@@ -211,7 +285,12 @@ export class ReviewService {
   ): Promise<PaginatedResult<ReviewResponseDto>> {
     const [rows, total] = await this.repository.findByUserId(userId, page, limit);
     return {
-      data: rows.map((r) => ReviewMapper.toResponse(r, this.resolveUrl, { viewerUserId: userId })),
+      data: rows.map((r) =>
+        ReviewMapper.toResponse(r, this.resolveUrl, {
+          viewerUserId: userId,
+          includeProduct: true,
+        }),
+      ),
       meta: {
         page,
         limit,
@@ -228,6 +307,7 @@ export class ReviewService {
     return ReviewMapper.toResponse(review, this.resolveUrl, {
       viewerUserId: userId,
       includeAllMedia: true,
+      includeProduct: true,
     });
   }
 
@@ -246,17 +326,12 @@ export class ReviewService {
         });
       });
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        const refreshed = await this.repository.findById(reviewId);
-        if (!refreshed) throw new ReviewNotFoundException();
-        return ReviewMapper.toResponse(refreshed, this.resolveUrl, { viewerUserId: userId });
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002')) {
+        throw err;
       }
-      throw err;
     }
 
-    const refreshed = await this.repository.findById(reviewId);
-    if (!refreshed) throw new ReviewNotFoundException();
-    return ReviewMapper.toResponse(refreshed, this.resolveUrl, { viewerUserId: userId });
+    return this.voterView(userId, reviewId, true);
   }
 
   async removeHelpfulVote(userId: string, reviewId: string): Promise<ReviewResponseDto> {
@@ -280,18 +355,34 @@ export class ReviewService {
       }
     });
 
+    return this.voterView(userId, reviewId, false);
+  }
+
+  /** A voter sees the review as the public does: no pending revision, no author userId. */
+  private async voterView(userId: string, reviewId: string, votedByViewer: boolean) {
     const refreshed = await this.repository.findById(reviewId);
     if (!refreshed) throw new ReviewNotFoundException();
-    return ReviewMapper.toResponse(refreshed, this.resolveUrl, { viewerUserId: userId });
+    return ReviewMapper.toResponse(refreshed, this.resolveUrl, {
+      viewerUserId: userId,
+      votedByViewer,
+      publicAudience: true,
+    });
   }
 
   async listAdmin(query: GetAdminReviewsQueryDto): Promise<PaginatedResult<ReviewResponseDto>> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
-    const where = query.status ? { status: query.status } : {};
-    const [rows, total] = await this.repository.findAdminPaginated(where, page, limit);
+    const where: Prisma.ReviewWhereInput = {
+      ...this.adminFilterWhere(query),
+      ...(query.status ? { status: query.status } : {}),
+    };
+    const orderBy: Prisma.ReviewOrderByWithRelationInput[] =
+      query.sortBy === AdminReviewSortBy.RATING
+        ? [{ rating: query.order ?? 'desc' }, { createdAt: 'desc' }]
+        : [{ createdAt: query.order ?? 'desc' }];
+    const [rows, total] = await this.repository.findAdminPaginated(where, page, limit, orderBy);
     return {
-      data: rows.map((r) => ReviewMapper.toResponse(r, this.resolveUrl, { includeAllMedia: true })),
+      data: rows.map((r) => ReviewMapper.toResponse(r, this.resolveUrl, ADMIN_VIEW)),
       meta: {
         page,
         limit,
@@ -303,73 +394,82 @@ export class ReviewService {
     };
   }
 
+  async countAdminByStatus(query: GetAdminReviewsQueryDto): Promise<AdminReviewCountsResponseDto> {
+    const counts = await this.repository.countByStatus(this.adminFilterWhere(query));
+    return {
+      PENDING: counts.PENDING ?? 0,
+      PUBLISHED: counts.PUBLISHED ?? 0,
+      HIDDEN: counts.HIDDEN ?? 0,
+      REJECTED: counts.REJECTED ?? 0,
+      total: Object.values(counts).reduce((sum, n) => sum + n, 0),
+    };
+  }
+
   async getAdminById(reviewId: string): Promise<ReviewResponseDto> {
     const review = await this.repository.findById(reviewId);
     if (!review) throw new ReviewNotFoundException();
-    return ReviewMapper.toResponse(review, this.resolveUrl, { includeAllMedia: true });
+    return ReviewMapper.toResponse(review, this.resolveUrl, ADMIN_VIEW);
   }
 
   async approveReview(actorId: string, reviewId: string, dto: AdminReviewModerationDto) {
-    const review = await this.repository.findByIdLite(reviewId);
-    if (!review) throw new ReviewNotFoundException();
-    if (review.status !== ReviewStatus.PENDING) throw new ReviewInvalidTransitionException();
-
-    const updated = await this.repository.updateStatus(reviewId, ReviewStatus.PUBLISHED);
-    await this.repository.recordModeration(
-      reviewId,
-      actorId,
-      ReviewModerationAction.APPROVE,
-      dto.reason,
-    );
-    await this.aggregateService.refreshProductRatings(review.productId);
-    return ReviewMapper.toResponse(updated, this.resolveUrl, { includeAllMedia: true });
+    return this.transitionStatus(actorId, reviewId, dto, {
+      from: ReviewStatus.PENDING,
+      to: ReviewStatus.PUBLISHED,
+      action: ReviewModerationAction.APPROVE,
+    });
   }
 
   async rejectReview(actorId: string, reviewId: string, dto: AdminReviewModerationDto) {
-    const review = await this.repository.findByIdLite(reviewId);
-    if (!review) throw new ReviewNotFoundException();
-    if (review.status !== ReviewStatus.PENDING) throw new ReviewInvalidTransitionException();
-
-    const updated = await this.repository.updateStatus(reviewId, ReviewStatus.REJECTED);
-    await this.repository.recordModeration(
-      reviewId,
-      actorId,
-      ReviewModerationAction.REJECT,
-      dto.reason,
-    );
-    return ReviewMapper.toResponse(updated, this.resolveUrl, { includeAllMedia: true });
+    this.assertModerationReason(dto);
+    return this.transitionStatus(actorId, reviewId, dto, {
+      from: ReviewStatus.PENDING,
+      to: ReviewStatus.REJECTED,
+      action: ReviewModerationAction.REJECT,
+    });
   }
 
   async hideReview(actorId: string, reviewId: string, dto: AdminReviewModerationDto) {
-    const review = await this.repository.findByIdLite(reviewId);
-    if (!review) throw new ReviewNotFoundException();
-    if (review.status !== ReviewStatus.PUBLISHED) throw new ReviewInvalidTransitionException();
-
-    const updated = await this.repository.updateStatus(reviewId, ReviewStatus.HIDDEN);
-    await this.repository.recordModeration(
-      reviewId,
-      actorId,
-      ReviewModerationAction.HIDE,
-      dto.reason,
-    );
-    await this.aggregateService.refreshProductRatings(review.productId);
-    return ReviewMapper.toResponse(updated, this.resolveUrl, { includeAllMedia: true });
+    this.assertModerationReason(dto);
+    return this.transitionStatus(actorId, reviewId, dto, {
+      from: ReviewStatus.PUBLISHED,
+      to: ReviewStatus.HIDDEN,
+      action: ReviewModerationAction.HIDE,
+    });
   }
 
   async restoreReview(actorId: string, reviewId: string, dto: AdminReviewModerationDto) {
+    return this.transitionStatus(actorId, reviewId, dto, {
+      from: ReviewStatus.HIDDEN,
+      to: ReviewStatus.PUBLISHED,
+      action: ReviewModerationAction.RESTORE,
+    });
+  }
+
+  /** Status change and its audit event commit together; ratings refresh when visibility flips. */
+  private async transitionStatus(
+    actorId: string,
+    reviewId: string,
+    dto: AdminReviewModerationDto,
+    transition: { from: ReviewStatus; to: ReviewStatus; action: ReviewModerationAction },
+  ): Promise<ReviewResponseDto> {
     const review = await this.repository.findByIdLite(reviewId);
     if (!review) throw new ReviewNotFoundException();
-    if (review.status !== ReviewStatus.HIDDEN) throw new ReviewInvalidTransitionException();
+    if (review.status !== transition.from) throw new ReviewInvalidTransitionException();
 
-    const updated = await this.repository.updateStatus(reviewId, ReviewStatus.PUBLISHED);
-    await this.repository.recordModeration(
-      reviewId,
-      actorId,
-      ReviewModerationAction.RESTORE,
-      dto.reason,
-    );
-    await this.aggregateService.refreshProductRatings(review.productId);
-    return ReviewMapper.toResponse(updated, this.resolveUrl, { includeAllMedia: true });
+    const visibilityChanges =
+      transition.from === ReviewStatus.PUBLISHED || transition.to === ReviewStatus.PUBLISHED;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.review.update({ where: { id: reviewId }, data: { status: transition.to } });
+      await tx.reviewModerationEvent.create({
+        data: { reviewId, actorId, action: transition.action, reason: dto.reason ?? null },
+      });
+      if (visibilityChanges) {
+        await this.aggregateService.refreshProductRatings(review.productId, tx);
+      }
+    });
+
+    return this.getAdminById(reviewId);
   }
 
   async approveRevision(
@@ -400,7 +500,9 @@ export class ReviewService {
           rating: revision.rating,
           title: revision.title,
           comment: revision.comment,
-          status: ReviewStatus.PUBLISHED,
+          // A hidden review stays hidden; approving its edit must not republish it.
+          status:
+            review.status === ReviewStatus.HIDDEN ? ReviewStatus.HIDDEN : ReviewStatus.PUBLISHED,
         },
       });
       await tx.reviewRevision.delete({ where: { id: revisionId } });
@@ -418,9 +520,7 @@ export class ReviewService {
       });
       await this.aggregateService.refreshProductRatings(productId, tx);
     });
-    const updated = await this.repository.findById(reviewId);
-    if (!updated) throw new ReviewNotFoundException();
-    return ReviewMapper.toResponse(updated, this.resolveUrl, { includeAllMedia: true });
+    return this.getAdminById(reviewId);
   }
 
   async rejectRevision(
@@ -429,6 +529,7 @@ export class ReviewService {
     revisionId: string,
     dto: AdminReviewModerationDto,
   ) {
+    this.assertModerationReason(dto);
     const revision = await this.repository.findRevisionById(revisionId);
     if (!revision || revision.reviewId !== reviewId) throw new ReviewRevisionNotFoundException();
     if (revision.status !== ReviewRevisionStatus.PENDING)
@@ -451,9 +552,7 @@ export class ReviewService {
       });
     });
 
-    const updated = await this.repository.findById(reviewId);
-    if (!updated) throw new ReviewNotFoundException();
-    return ReviewMapper.toResponse(updated, this.resolveUrl, { includeAllMedia: true });
+    return this.getAdminById(reviewId);
   }
 
   async getModerationHistory(reviewId: string): Promise<ReviewModerationEventResponseDto[]> {
@@ -492,5 +591,33 @@ export class ReviewService {
       select: { id: true },
     });
     return line !== null;
+  }
+
+  private assertModerationReason(dto: AdminReviewModerationDto) {
+    if (!dto.reason?.trim()) {
+      throw new BadRequestException('A reason is required for this action.');
+    }
+  }
+
+  /** Every admin list filter except status, so status tab counts honour the active filters. */
+  private adminFilterWhere(query: GetAdminReviewsQueryDto): Prisma.ReviewWhereInput {
+    const search = query.search?.trim();
+    const and: Prisma.ReviewWhereInput[] = [];
+    if (query.rating !== undefined) and.push({ rating: query.rating });
+    if (query.hasPendingRevision) {
+      and.push({ revisions: { some: { status: ReviewRevisionStatus.PENDING } } });
+    }
+    if (query.hasMedia) and.push({ media: { some: { revisionId: null } } });
+    if (search) {
+      and.push({
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { comment: { contains: search, mode: 'insensitive' } },
+          { user: { name: { contains: search, mode: 'insensitive' } } },
+          { product: { title: { contains: search, mode: 'insensitive' } } },
+        ],
+      });
+    }
+    return and.length > 0 ? { AND: and } : {};
   }
 }

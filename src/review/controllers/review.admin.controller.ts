@@ -24,6 +24,13 @@ export class ReviewAdminController {
     return this.reviewService.listAdmin(query);
   }
 
+  // Declared before ADMIN_BY_ID so "counts" is not captured as a review id.
+  @Get(REVIEW_ROUTES.ADMIN_COUNTS)
+  @ResponseMessage('Review counts fetched successfully.')
+  counts(@Query() query: GetAdminReviewsQueryDto) {
+    return this.reviewService.countAdminByStatus(query);
+  }
+
   @Get(REVIEW_ROUTES.ADMIN_BY_ID)
   @ResponseMessage('Review fetched successfully.')
   getOne(@Param('reviewId') reviewId: string) {

@@ -9,6 +9,7 @@ import {
   ReviewMediaLimitException,
   ReviewMediaObjectNotFoundException,
   ReviewNotFoundException,
+  ReviewPendingRevisionExistsException,
 } from '@/common/exceptions/review.exception';
 import { PresignReviewMediaDto } from './dto/presign-review-media.dto';
 import { RegisterReviewMediaDto, ReorderReviewMediaDto } from './dto/register-review-media.dto';
@@ -62,6 +63,7 @@ export class ReviewMediaService {
       if (!exists) throw new ReviewMediaObjectNotFoundException(item.storageKey);
 
       const revisionId = item.revisionId ?? null;
+      await this.assertLiveMediaAllowed(reviewId, revisionId);
       if (revisionId) {
         const revision = await this.repository.findRevisionById(revisionId);
         if (!revision || revision.reviewId !== reviewId) {
@@ -111,6 +113,7 @@ export class ReviewMediaService {
 
   async reorder(userId: string, reviewId: string, dto: ReorderReviewMediaDto) {
     await this.reviewService.findOwned(userId, reviewId);
+    await this.assertLiveMediaAllowed(reviewId, null);
     await this.repository.reorderLiveMedia(reviewId, dto.mediaIds);
     return { reordered: true };
   }
@@ -121,6 +124,7 @@ export class ReviewMediaService {
     if (!media || media.reviewId !== reviewId) {
       throw new ReviewNotFoundException();
     }
+    await this.assertLiveMediaAllowed(reviewId, media.revisionId);
 
     await this.repository.deleteMedia(mediaId);
     try {
@@ -151,6 +155,13 @@ export class ReviewMediaService {
       }
     }
     return { removed, scanned: candidates.length };
+  }
+
+  private async assertLiveMediaAllowed(reviewId: string, revisionId: string | null | undefined) {
+    if (revisionId) return;
+    if (await this.repository.hasPendingRevision(reviewId)) {
+      throw new ReviewPendingRevisionExistsException();
+    }
   }
 
   private assertCountsAfterAdd(

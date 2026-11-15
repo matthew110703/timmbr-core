@@ -1,6 +1,8 @@
 export const REVIEW_CONSTANTS = {
   TITLE_MAX_LENGTH: 120,
   COMMENT_MAX_LENGTH: 10_000,
+  /** Raw HTML cap; the text limit above is enforced after sanitizing. */
+  COMMENT_MAX_HTML_LENGTH: 40_000,
   MAX_IMAGES: 5,
   MAX_VIDEOS: 2,
   MAX_IMAGE_SIZE_BYTES: 5 * 1024 * 1024,
