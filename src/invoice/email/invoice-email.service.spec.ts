@@ -17,6 +17,7 @@ describe('InvoiceEmailService', () => {
 
   const readyInvoice: any = {
     id: 'inv-uuid-1',
+    orderId: '5008524c-1111-2222-3333-444455556666',
     invoiceNumber: 'INV/26-27/000001',
     pdfStatus: InvoicePdfStatus.READY,
     storageKey: 'invoices/inv-uuid-1/versions/1/invoice.pdf',
@@ -175,7 +176,10 @@ describe('InvoiceEmailService', () => {
     expect(mailerService.sendInvoiceEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: 'customer@example.com',
+        customerName: 'Aarav Sharma',
+        orderNumber: '#TMB-5008524C',
         invoiceNumber: 'INV/26-27/000001',
+        attachmentFileName: 'INV_26-27_000001.pdf',
         pdfBuffer: expect.any(Buffer),
       }),
     );

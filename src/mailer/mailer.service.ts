@@ -17,8 +17,12 @@ import {
 } from './templates/order-update-email.template';
 import { sanitizeInvoicePdfFileName } from '@/invoice/utils/invoice-number.util';
 
-export interface SendInvoiceEmailOptions extends InvoiceEmailTemplateParams {
+export interface SendInvoiceEmailOptions extends Omit<
+  InvoiceEmailTemplateParams,
+  'attachmentFileName'
+> {
   to: string;
+  invoiceNumber: string;
   pdfBuffer: Buffer;
   attachmentFileName?: string;
 }
@@ -146,12 +150,11 @@ export class MailerService {
 
     await this.dispatchEmail({
       to: options.to,
-      subject: `Your Timmbr Tax Invoice (${options.invoiceNumber})`,
+      subject: `Your Timmbr order is confirmed (${options.orderNumber})`,
       html: invoiceEmailTemplate({
         customerName: options.customerName,
-        invoiceNumber: options.invoiceNumber,
-        issuedDateFormatted: options.issuedDateFormatted,
-        grandTotalFormatted: options.grandTotalFormatted,
+        orderNumber: options.orderNumber,
+        attachmentFileName: safeFileName,
       }),
       attachments: [
         {

@@ -15,7 +15,7 @@ import {
   InvoiceEmailJobPayload,
   SEND_INVOICE_EMAIL_JOB,
 } from '../queue/invoice.queue.constants';
-import { formatInrCurrency, formatInvoiceDateIst } from '../pdf/invoice-html.template';
+import { formatOrderNumber } from '@/order/order.helper';
 import { sanitizeInvoicePdfFileName } from '../utils/invoice-number.util';
 import { InvoiceAddressSnapshot } from '../invoice-issuance.service';
 
@@ -205,7 +205,7 @@ export class InvoiceEmailService {
 
     const now = new Date();
     const billing = (invoice.billingAddress ?? {}) as unknown as InvoiceAddressSnapshot;
-    const customerName = billing.name || 'Customer';
+    const customerName = billing.name ?? '';
 
     try {
       const pdfBuffer = await this.mediaService.getBuffer(invoice.storageKey);
@@ -213,9 +213,8 @@ export class InvoiceEmailService {
       await this.mailerService.sendInvoiceEmail({
         to: delivery.recipient,
         customerName,
+        orderNumber: formatOrderNumber(invoice.orderId),
         invoiceNumber: invoice.invoiceNumber,
-        issuedDateFormatted: formatInvoiceDateIst(new Date(invoice.issuedAt)),
-        grandTotalFormatted: formatInrCurrency(invoice.grandTotal),
         pdfBuffer,
         attachmentFileName: sanitizeInvoicePdfFileName(invoice.invoiceNumber),
       });

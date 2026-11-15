@@ -1,111 +1,83 @@
-import { TIMMBR_BRAND_LOGO_URL } from './constants';
 import { escapeHtml } from '@/invoice/pdf/invoice-html.template';
+import {
+  EMAIL_THEME,
+  FONT_SANS,
+  TIMMBR_DOWNLOAD_ICON_URL,
+  TIMMBR_OTP_SHIELD_ICON_URL,
+} from './constants';
+import {
+  EMAIL_DIVIDER,
+  emailGreeting,
+  emailIconRow,
+  emailIntro,
+  emailNote,
+  emailNoteTitle,
+  emailStack,
+  renderEmailLayout,
+} from './layout';
 
 export interface InvoiceEmailTemplateParams {
   customerName: string;
-  invoiceNumber: string;
-  issuedDateFormatted: string;
-  grandTotalFormatted: string;
+  orderNumber: string;
+  attachmentFileName: string;
 }
 
 export function invoiceEmailTemplate(params: InvoiceEmailTemplateParams): string {
-  const firstName = escapeHtml(params.customerName.split(' ')[0] || 'Customer');
-  const invoiceNumber = escapeHtml(params.invoiceNumber);
-  const issuedDate = escapeHtml(params.issuedDateFormatted);
-  const grandTotal = escapeHtml(params.grandTotalFormatted);
+  const orderNumber = escapeHtml(params.orderNumber);
+  const fileName = escapeHtml(params.attachmentFileName);
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Your Timmbr Invoice ${invoiceNumber}</title>
-</head>
-<body style="margin:0; padding:0; background-color:#ECE3D2; font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;">
+  const ticket = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:6px;">
+  <tr>
+    <td align="center" style="padding:12px 0; text-align:center;">
+      <p class="t-label" style="margin:0 0 12px 0; font-family:${FONT_SANS}; font-size:12px; line-height:normal; color:${EMAIL_THEME.label.light}; font-weight:700;">
+        YOUR ORDER NUMBER
+      </p>
+      <p class="t-strong r-ticket-number" style="margin:0; font-family:${FONT_SANS}; font-size:30px; line-height:1.1; color:${EMAIL_THEME.strong.light}; font-weight:700;">
+        ${orderNumber}
+      </p>
+    </td>
+  </tr>
+</table>`;
 
-  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all;">
-    Your Timmbr GST invoice ${invoiceNumber} for ${grandTotal} is attached to this email.
-  </div>
+  const attachment = `${emailNoteTitle('Your invoice is attached.')}
+<table role="presentation" cellpadding="0" cellspacing="0">
+  <tr>
+    <td valign="middle" class="t-meta" style="font-family:${FONT_SANS}; font-size:14px; line-height:1.3; color:${EMAIL_THEME.meta.light}; font-weight:400; word-break:break-word;">
+      ${fileName} &bull; PDF document
+    </td>
+    <td width="16" valign="middle" style="padding-left:8px; font-size:0; line-height:0;">
+      <img src="${TIMMBR_DOWNLOAD_ICON_URL}" width="16" height="16" alt="" class="t-icon"
+           style="display:block; width:16px; height:16px; border:0;">
+    </td>
+  </tr>
+</table>`;
 
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#ECE3D2; padding:40px 0;">
-    <tr>
-      <td align="center">
+  const bodyHtml = emailStack([
+    emailIntro(
+      emailGreeting(params.customerName.split(' ')[0]),
+      'Thanks for your order! We&rsquo;ve received it and are getting everything ready. Your invoice is attached to this email.',
+    ),
+    ticket,
+    emailStack(
+      [
+        emailIconRow(TIMMBR_OTP_SHIELD_ICON_URL, attachment),
+        EMAIL_DIVIDER,
+        emailNote(
+          'What happens next?',
+          'We&rsquo;ll send you an update when your order is on its way.<br>Need a hand? Visit Help in your Timmbr account.',
+        ),
+      ],
+      18,
+    ),
+  ]);
 
-        <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#F7F1E6; border-radius:12px; overflow:hidden; max-width:480px; width:100%;">
-
-          <!-- Logo -->
-          <tr>
-            <td align="center" style="padding:44px 40px 8px 40px;">
-              <img src="${TIMMBR_BRAND_LOGO_URL}"
-                   width="160" alt="Timmbr"
-                   style="display:block; width:160px; height:auto;">
-            </td>
-          </tr>
-
-          <!-- Divider -->
-          <tr>
-            <td style="padding:24px 40px 0 40px;">
-              <div style="height:1px; background-color:#E3D7C2; width:100%;"></div>
-            </td>
-          </tr>
-
-          <!-- Heading -->
-          <tr>
-            <td align="center" style="padding:32px 40px 0 40px;">
-              <h1 style="margin:0; font-size:22px; line-height:30px; color:#3A2E22; font-weight:700;">
-                Your GST Invoice is Ready
-              </h1>
-            </td>
-          </tr>
-
-          <!-- Body copy -->
-          <tr>
-            <td align="center" style="padding:16px 40px 0 40px;">
-              <p style="margin:0; font-size:15px; line-height:24px; color:#6B5F4F;">
-                Hi ${firstName}, thank you for your order with Timmbr! Please find your tax invoice attached as a PDF to this email.
-              </p>
-            </td>
-          </tr>
-
-          <!-- Summary box -->
-          <tr>
-            <td style="padding:24px 40px 8px 40px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#EFE6D5; border-radius:8px; padding:16px;">
-                <tr>
-                  <td style="font-size:13px; color:#6B5F4F; padding:4px 0;">Invoice Number:</td>
-                  <td align="right" style="font-size:13px; font-weight:700; color:#3A2E22; padding:4px 0;">${invoiceNumber}</td>
-                </tr>
-                <tr>
-                  <td style="font-size:13px; color:#6B5F4F; padding:4px 0;">Invoice Date:</td>
-                  <td align="right" style="font-size:13px; font-weight:600; color:#3A2E22; padding:4px 0;">${issuedDate}</td>
-                </tr>
-                <tr>
-                  <td style="font-size:14px; font-weight:700; color:#3A2E22; padding:8px 0 4px 0;">Total Paid:</td>
-                  <td align="right" style="font-size:14px; font-weight:700; color:#D16731; padding:8px 0 4px 0;">${grandTotal}</td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <tr><td style="padding-bottom:40px;"></td></tr>
-
-        </table>
-
-        <!-- Footer -->
-        <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px; width:100%;">
-          <tr>
-            <td align="center" style="padding:24px 20px 0 20px;">
-              <p style="margin:0; font-size:12px; line-height:18px; color:#9B8F7A;">
-                &copy; 2026 Timmbr. All rights reserved.
-              </p>
-            </td>
-          </tr>
-        </table>
-
-      </td>
-    </tr>
-  </table>
-
-</body>
-</html>`;
+  return renderEmailLayout({
+    title: `Order confirmed ${orderNumber}`,
+    preheader: `Your Timmbr order ${orderNumber} is confirmed. Your invoice is attached.`,
+    heroTitle: 'Order confirmed.',
+    heroSubtitle: 'A little closer to home.',
+    bodyHtml,
+    signOff: 'Thanks for choosing us,',
+    footerNote: 'This is an automated order email. Please do not reply.',
+  });
 }

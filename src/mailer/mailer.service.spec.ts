@@ -76,16 +76,16 @@ describe('MailerService', () => {
       await service.sendInvoiceEmail({
         to: 'customer@example.com',
         customerName: 'Aarav',
+        orderNumber: '#TMB-5008524C',
         invoiceNumber: 'INV/26-27/000001',
-        issuedDateFormatted: '02 Jun 2026',
-        grandTotalFormatted: '₹2,224.00',
         pdfBuffer,
       });
 
       expect(mockTransporter.sendMail).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'customer@example.com',
-          subject: 'Your Timmbr Tax Invoice (INV/26-27/000001)',
+          subject: 'Your Timmbr order is confirmed (#TMB-5008524C)',
+          html: expect.stringContaining('INV_26-27_000001.pdf') as string,
           attachments: [
             expect.objectContaining({
               filename: 'INV_26-27_000001.pdf',
