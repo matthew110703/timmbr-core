@@ -88,7 +88,7 @@ function sortOrder(sort: ListingSort, q: string | null): Prisma.Sql {
 /** The ProductListing columns a product card needs. */
 const CARD_COLUMNS = Prisma.sql`"productId", slug, title, "brandName", price, "compareAtPrice",
   currency, "discountPct", "hasMultipleVariants", "inStock", "coverImageKey", "coverAlt",
-  "defaultVariantId"`;
+  "defaultVariantId", "ratingAvg", "ratingCount"`;
 
 /**
  * Typeahead candidates: the ranking runs on at most this many matches (in-stock, newest first).

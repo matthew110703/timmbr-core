@@ -22,6 +22,8 @@ export class ListingProductDto {
   /** The variant the price is for: what the card's wishlist heart saves. */
   defaultVariantId!: string | null;
   coverImage!: ListingCoverImageDto | null;
+  ratingAvg!: number | null;
+  ratingCount!: number;
 }
 
 export class ListingFacetOptionDto {

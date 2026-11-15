@@ -34,6 +34,8 @@ export class ListingMapper {
       coverImage: row.coverImageKey
         ? { url: imageUrl(row.coverImageKey), alt: row.coverAlt ?? null }
         : null,
+      ratingAvg: row.ratingCount > 0 && row.ratingAvg !== null ? toNumber(row.ratingAvg) : null,
+      ratingCount: row.ratingCount,
     };
   }
 

@@ -57,6 +57,8 @@ export interface ListingRow {
   coverImageKey: string | null;
   coverAlt: string | null;
   defaultVariantId: string | null;
+  ratingAvg: unknown;
+  ratingCount: number;
 }
 
 /** A row of the aggregate query (total, price bounds, option and brand counts). */

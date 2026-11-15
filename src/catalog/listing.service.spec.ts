@@ -174,6 +174,8 @@ describe('ListingService', () => {
       inStock: true,
       coverImageKey: 'img/bed.jpg',
       coverAlt: null,
+      ratingAvg: '4.50',
+      ratingCount: 12,
     };
 
     it('returns nothing without querying when no word is usable', async () => {
